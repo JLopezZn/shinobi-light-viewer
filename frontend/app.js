@@ -94,14 +94,14 @@ class CellPlayer {
   // the bytes before the main element requests the same URL.
   _preloadChunk(chunkId) {
     if (this._preloadChunkId === chunkId) return;
-    this._preloadVid.src = '';
+    this._preloadVid.removeAttribute('src');
     this._preloadVid.load(); // abort previous in-flight download
     this._preloadChunkId = chunkId;
     this._preloadVid.src = `/api/video/${chunkId}`;
   }
 
   _clearPreload() {
-    this._preloadVid.src = '';
+    this._preloadVid.removeAttribute('src');
     this._preloadVid.load();
     this._preloadChunkId = null;
   }
@@ -140,8 +140,10 @@ class CellPlayer {
       // Explicit reset: puts the element in a known-clean state before the new
       // src.  Without this, rapid src changes (multiple clicks) can leave the
       // media state machine in an indeterminate loading state on some browsers.
+      // IMPORTANT: removeAttribute('src') — never src='' which the browser
+      // resolves to the document URL and fires a GET / on every load() call.
       this._videoEl.pause();
-      this._videoEl.src = '';
+      this._videoEl.removeAttribute('src');
       this._videoEl.load();
       this._videoEl.src = `/api/video/${chunk.id}`;
       this._videoEl.addEventListener('loadedmetadata', () => {
@@ -252,7 +254,7 @@ class CellPlayer {
     this._ac.abort(); // removes all persistent event listeners
     this._clearPreload();
     this._videoEl.pause();
-    this._videoEl.src = '';
+    this._videoEl.removeAttribute('src');
     this._videoEl.load(); // release media resource
   }
 }

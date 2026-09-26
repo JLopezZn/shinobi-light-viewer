@@ -103,6 +103,7 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - **FR-020**: Si una cámara activa no tiene footage en el rango seleccionado, su celda DEBE mostrar "Sin footage" y DEBE excluirse de la exportación.
 - **FR-021**: Al pasar el cursor sobre la barra del scrubber, DEBE mostrarse un tooltip con la hora exacta correspondiente al punto bajo el cursor; el tooltip desaparece al salir de la barra.
 - **FR-022**: La barra del scrubber DEBE mostrar un tercer marcador (playhead) que indica la posición actual de reproducción; el marcador avanza automáticamente durante la reproducción y puede arrastrarse para hacer seek a cualquier instante del período, sin interrumpir la reproducción.
+- **FR-023**: Al confirmar el período, los handles del scrubber DEBEN auto-posicionarse al rango real del footage disponible (inicio del primer chunk y fin del último chunk, calculado como unión de todas las cámaras activas). Si el operador seleccionó 12:00–22:00 pero el footage solo existe de 17:00–22:00, los handles quedan en 17:00–22:00 automáticamente.
 
 ### Key Entities
 

@@ -96,6 +96,12 @@ class CellPlayer {
   get hasFootage() { return this._hasFootage; }
   get activeChunk() { return this._activeChunk; }
 
+  // Returns { fromMs, toMs } spanning all chunks, or null if no footage
+  get chunkExtent() {
+    if (!this._chunks.length) return null;
+    return { fromMs: this._chunks[0].start_ts, toMs: this._chunks[this._chunks.length - 1].end_ts };
+  }
+
   get currentVirtualTimeMs() {
     if (!this._activeChunk) return null;
     return this._activeChunk.start_ts + this._videoEl.currentTime * 1000;
@@ -240,6 +246,18 @@ class GridPlayer {
 
   get masterCell() {
     return this.activeCells[0] || null;
+  }
+
+  // Union of all chunk extents across all active cameras
+  get footageRange() {
+    let fromMs = Infinity, toMs = -Infinity;
+    for (const { cell } of this._cells.values()) {
+      const ext = cell.chunkExtent;
+      if (!ext) continue;
+      if (ext.fromMs < fromMs) fromMs = ext.fromMs;
+      if (ext.toMs   > toMs)   toMs   = ext.toMs;
+    }
+    return fromMs === Infinity ? null : { fromMs, toMs };
   }
 
   get size() { return this._cells.size; }
@@ -497,6 +515,13 @@ class Scrubber {
   get endMs() {
     if (!this._periodToMs) return 0;
     return this._periodFromMs + this._endPct * (this._periodToMs - this._periodFromMs);
+  }
+
+  setRange(startPct, endPct) {
+    this._startPct = Math.max(0, Math.min(1, startPct));
+    this._endPct   = Math.min(1, Math.max(this._startPct + 1e-6, endPct));
+    this._playPct  = this._startPct;
+    this._updateDOM();
   }
 
   get playheadMs() {
@@ -774,7 +799,16 @@ document.getElementById('btn-confirm-period').addEventListener('click', async ()
   scrubber.reset(_periodFromMs, _periodToMs);
   await gridPlayer.loadPeriod(_periodFromMs, _periodToMs);
 
-  // Seek all cells to start of scrubber range
+  // Auto-position handles to actual footage extent across all cameras
+  const footage = gridPlayer.footageRange;
+  if (footage) {
+    const total = _periodToMs - _periodFromMs;
+    scrubber.setRange(
+      Math.max(0, (footage.fromMs - _periodFromMs) / total),
+      Math.min(1, (footage.toMs   - _periodFromMs) / total)
+    );
+  }
+
   gridPlayer.seekAll(scrubber.startMs);
 
   document.getElementById('btn-play-pause').disabled = false;

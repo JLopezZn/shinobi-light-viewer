@@ -791,6 +791,7 @@ class ExportManager {
 
 let _rafId = null;
 let _seekRestartTimer = null;
+let _seekDebounceTimer = null;
 const SYNC_TOLERANCE = 0.05;
 
 function startSyncLoop(gridPlayer, scrubber) {
@@ -1003,19 +1004,26 @@ scrubber.onChange = (startPct, endPct, seekMs, handle) => {
 };
 
 // Playhead drag/click → seek all cells (works during playback too).
-// Stop the sync loop FIRST so a stale frame can't falsely detect end-of-range
-// and call pauseAll() between the seek and the restart.  Debounce the restart
-// so rapid drag events don't pile up dozens of setTimeout calls.
+// The scrubber already updates the visual playhead position in _onMove before
+// calling onSeek, so no DOM update is needed here.
+// We debounce the actual chunk load: each pixel of drag cancels the previous
+// timer, so the HTTP request only fires once the user pauses for 80 ms.
+// This prevents the browser's 6-connection-per-origin limit from queuing
+// dozens of stale requests that delay the final seek.
 scrubber.onSeek = ms => {
   stopSyncLoop();
-  gridPlayer.seekAll(ms, _isPlaying);
-  if (_isPlaying) {
-    clearTimeout(_seekRestartTimer);
-    _seekRestartTimer = setTimeout(() => {
-      _seekRestartTimer = null;
-      startSyncLoop(gridPlayer, scrubber);
-    }, 150);
-  }
+  clearTimeout(_seekDebounceTimer);
+  clearTimeout(_seekRestartTimer);
+  _seekDebounceTimer = setTimeout(() => {
+    _seekDebounceTimer = null;
+    gridPlayer.seekAll(ms, _isPlaying);
+    if (_isPlaying) {
+      _seekRestartTimer = setTimeout(() => {
+        _seekRestartTimer = null;
+        startSyncLoop(gridPlayer, scrubber);
+      }, 150);
+    }
+  }, 80);
 };
 
 // ESC restores any maximized cell

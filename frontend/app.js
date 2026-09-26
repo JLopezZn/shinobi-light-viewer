@@ -54,9 +54,21 @@ class CellPlayer {
 
   seekTo(virtualTimeMs) {
     if (!this._hasFootage) return;
-    const chunk = this._chunks.find(c => virtualTimeMs >= c.start_ts && virtualTimeMs < c.end_ts);
-    if (!chunk) return;
-    const offsetSecs = (virtualTimeMs - chunk.start_ts) / 1000;
+    let chunk = this._chunks.find(c => virtualTimeMs >= c.start_ts && virtualTimeMs < c.end_ts);
+    let offsetSecs = 0;
+    if (!chunk) {
+      // Requested instant falls in a gap or before/after all footage —
+      // jump forward to the next available chunk instead of hanging forever.
+      chunk = this._chunks.find(c => c.start_ts > virtualTimeMs);
+      if (!chunk) {
+        this._activeChunk = null;
+        this._videoEl.pause();
+        this.showNoFootage();
+        return;
+      }
+    } else {
+      offsetSecs = (virtualTimeMs - chunk.start_ts) / 1000;
+    }
     if (this._activeChunk && this._activeChunk.id === chunk.id) {
       this._videoEl.currentTime = offsetSecs;
     } else {
@@ -613,9 +625,18 @@ function startSyncLoop(gridPlayer, scrubber) {
     if (!master) return;
     const masterVid = master.videoEl;
 
-    // Stop at scrubber end
     const virtualNow = master.currentVirtualTimeMs;
-    if (virtualNow !== null && virtualNow >= scrubber.endMs) {
+
+    // Master ran out of footage ahead (e.g. past the last recorded chunk) — stop.
+    if (virtualNow === null) {
+      gridPlayer.pauseAll();
+      _isPlaying = false;
+      updatePlayPauseButton(false);
+      return;
+    }
+
+    // Stop at scrubber end
+    if (virtualNow >= scrubber.endMs) {
       gridPlayer.pauseAll();
       _isPlaying = false;
       updatePlayPauseButton(false);
@@ -623,7 +644,7 @@ function startSyncLoop(gridPlayer, scrubber) {
     }
 
     // Advance playhead
-    if (virtualNow !== null) scrubber.setPlayhead(virtualNow);
+    scrubber.setPlayhead(virtualNow);
 
     // Sync followers
     for (const cell of gridPlayer.activeCells) {

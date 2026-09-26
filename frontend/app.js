@@ -137,11 +137,15 @@ class CellPlayer {
       // stale callback doesn't fire on this new src and corrupt currentTime.
       if (this._seekAc) this._seekAc.abort();
       this._seekAc = new AbortController();
-      // Explicit reset: puts the element in a known-clean state before the new
-      // src.  Without this, rapid src changes (multiple clicks) can leave the
-      // media state machine in an indeterminate loading state on some browsers.
-      // IMPORTANT: removeAttribute('src') — never src='' which the browser
-      // resolves to the document URL and fires a GET / on every load() call.
+      // Free the preload connection slot BEFORE opening the main element's
+      // request.  prefetchForMs + seekAll firing together would otherwise put
+      // 12 requests in-flight (6 preload + 6 main) against Chrome's
+      // 6-connection-per-origin limit, starving all main elements and causing
+      // permanent spinners.  _hideOverlay() restarts the next-chunk preload
+      // once the current chunk is actually playing.
+      this._clearPreload();
+      // IMPORTANT: removeAttribute('src') — never src='' which resolves to
+      // the document URL and fires a GET / on every load() call.
       this._videoEl.pause();
       this._videoEl.removeAttribute('src');
       this._videoEl.load();
@@ -150,16 +154,6 @@ class CellPlayer {
         this._videoEl.currentTime = offsetSecs;
         if (wasPlaying) this._videoEl.play().catch(() => {});
       }, { once: true, signal: this._seekAc.signal });
-      // Redirect the preload element to the NEXT chunk — unless it is already
-      // loading the seek target (prefetchForMs ran ahead of this call), in which
-      // case both elements race on the same URL and _hideOverlay will redirect
-      // to the next chunk once playback starts.
-      const chunkIdx = this._chunks.indexOf(chunk);
-      if (chunkIdx >= 0 && chunkIdx < this._chunks.length - 1) {
-        if (this._preloadChunkId !== chunk.id) {
-          this._preloadChunk(this._chunks[chunkIdx + 1].id);
-        }
-      }
     }
   }
 
@@ -1074,11 +1068,8 @@ scrubber.onChange = (startPct, endPct, seekMs, handle) => {
 // Playhead interaction → seek all cells.
 // `immediate` = true  for clicks (discrete actions — respond right away).
 // `immediate` = false for drag  (continuous — debounce 80 ms to avoid flooding).
-// Either way, prefetchForMs fires instantly so the target chunk starts loading
-// before seekAll is called.
 scrubber.onSeek = (ms, immediate = false) => {
   stopSyncLoop();
-  gridPlayer.prefetchForMs(ms); // warm up target chunk right away
   clearTimeout(_seekDebounceTimer);
   clearTimeout(_seekRestartTimer);
   const doSeek = () => {

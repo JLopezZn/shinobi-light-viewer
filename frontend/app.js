@@ -738,7 +738,7 @@ const exportManager = new ExportManager();
 
 let _periodFromMs = null;
 let _periodToMs = null;
-let _playbackSpeed = 8;
+let _playbackSpeed = 1;
 let _isPlaying = false;
 
 // Default date = today (local timezone, not UTC)

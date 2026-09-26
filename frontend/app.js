@@ -275,6 +275,7 @@ class Scrubber {
     this._dragging  = null;
     this._panning   = false;
     this._panLastX  = null;
+    this._panned    = false;
 
     this.onChange = null; // (startPct, endPct, seekMs) => {}
     this.onSeek   = null; // (ms) => {} — fired when playhead is dragged
@@ -307,16 +308,16 @@ class Scrubber {
     this._el.addEventListener('mousemove', e => this._showTooltip(e));
     this._el.addEventListener('mouseleave', () => { this._tooltip.style.display = 'none'; });
 
-    // Click in highlighted zone → seek
+    // Click anywhere on bar → move playhead + seek
     this._el.addEventListener('click', e => {
-      if (!this._periodFromMs) return;
+      if (!this._periodFromMs || this._panned) { this._panned = false; return; }
       const rect = this._el.getBoundingClientRect();
       const vpct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const full = this._v2p(vpct);
-      if (full >= this._startPct && full <= this._endPct) {
-        const ms = this._periodFromMs + full * (this._periodToMs - this._periodFromMs);
-        if (this.onChange) this.onChange(this._startPct, this._endPct, ms);
-      }
+      const ms = this._periodFromMs + full * (this._periodToMs - this._periodFromMs);
+      this._playPct = full;
+      this._updateDOM();
+      if (this.onSeek) this.onSeek(ms);
     });
   }
 
@@ -365,6 +366,7 @@ class Scrubber {
       this._viewStart = Math.max(0, ns);
       this._viewEnd   = Math.min(1, ne);
       this._panLastX  = e.clientX;
+      this._panned    = true;
       this._el.style.cursor = 'grabbing';
       this._updateDOM();
       return;

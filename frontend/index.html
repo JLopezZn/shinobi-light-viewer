@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shinobi Light Viewer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <h2>Cameras</h2>
+      <ul id="camera-list"></ul>
+      <div id="indexer-status"></div>
+    </aside>
+
+    <main id="main">
+      <div id="controls">
+        <input type="date" id="date-picker" />
+        <div id="time-range">
+          <label>From <input type="time" id="from-time" value="00:00" /></label>
+          <label>To <input type="time" id="to-time" value="23:59" /></label>
+          <button id="btn-export" disabled>Export</button>
+          <button id="btn-timelapse" disabled>Timelapse</button>
+        </div>
+      </div>
+
+      <div id="timeline-container">
+        <div id="timeline-bar"></div>
+        <div id="time-labels"></div>
+      </div>
+
+      <div id="job-panel" class="hidden">
+        <span id="job-label"></span>
+        <progress id="job-progress" value="0" max="1"></progress>
+        <button id="btn-cancel">Cancel</button>
+        <a id="download-link" class="hidden" href="#">Download</a>
+      </div>
+
+      <div id="error-banner" class="hidden"></div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

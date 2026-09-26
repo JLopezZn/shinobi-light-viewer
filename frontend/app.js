@@ -77,7 +77,7 @@ class CellPlayer {
     }
   }
 
-  seekTo(virtualTimeMs) {
+  seekTo(virtualTimeMs, shouldPlay = false) {
     if (!this._hasFootage) return;
     let chunk = this._chunks.find(c => virtualTimeMs >= c.start_ts && virtualTimeMs < c.end_ts);
     let offsetSecs = 0;
@@ -96,8 +96,12 @@ class CellPlayer {
     }
     if (this._activeChunk && this._activeChunk.id === chunk.id) {
       this._videoEl.currentTime = offsetSecs;
+      if (shouldPlay && this._videoEl.paused) this._videoEl.play().catch(() => {});
     } else {
-      const wasPlaying = !this._videoEl.paused;
+      // Use shouldPlay from caller rather than reading this._videoEl.paused:
+      // after a src change the element is always paused, so rapid seeks across
+      // chunk boundaries would lose the play state on every hop except the first.
+      const wasPlaying = shouldPlay || !this._videoEl.paused;
       this._activeChunk = chunk;
       this._showSpinner();
       // Abort any pending loadedmetadata from a previous chunk change so the
@@ -269,9 +273,9 @@ class GridPlayer {
     await Promise.all(promises);
   }
 
-  seekAll(virtualTimeMs) {
+  seekAll(virtualTimeMs, shouldPlay = false) {
     for (const { cell } of this._cells.values()) {
-      cell.seekTo(virtualTimeMs);
+      cell.seekTo(virtualTimeMs, shouldPlay);
     }
   }
 
@@ -413,6 +417,25 @@ class Scrubber {
   _onWheel(e) {
     e.preventDefault();
     if (!this._periodFromMs) return;
+
+    // Horizontal trackpad swipe or Shift+wheel → pan
+    const isHoriz = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    if (isHoriz || e.shiftKey) {
+      const viewSz = this._viewEnd - this._viewStart;
+      const raw    = isHoriz ? e.deltaX : e.deltaY;
+      const px     = raw * (e.deltaMode === 0 ? 1 : 40); // normalize line-mode events
+      const delta  = (px / this._el.clientWidth) * viewSz;
+      let ns = this._viewStart + delta;
+      let ne = this._viewEnd   + delta;
+      if (ns < 0) { ne -= ns; ns = 0; }
+      if (ne > 1) { ns -= (ne - 1); ne = 1; }
+      this._viewStart = Math.max(0, ns);
+      this._viewEnd   = Math.min(1, ne);
+      this._updateDOM();
+      return;
+    }
+
+    // Vertical scroll → zoom around cursor
     const rect   = this._el.getBoundingClientRect();
     const vpct   = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const pivot  = this._v2p(vpct);
@@ -767,6 +790,7 @@ class ExportManager {
 // ── Sync loop ─────────────────────────────────────────────────────────────────
 
 let _rafId = null;
+let _seekRestartTimer = null;
 const SYNC_TOLERANCE = 0.05;
 
 function startSyncLoop(gridPlayer, scrubber) {
@@ -978,10 +1002,20 @@ scrubber.onChange = (startPct, endPct, seekMs, handle) => {
   if (!_isPlaying && handle !== 'end') gridPlayer.seekAll(seekMs);
 };
 
-// Playhead drag/click → seek all cells (works during playback too)
+// Playhead drag/click → seek all cells (works during playback too).
+// Stop the sync loop FIRST so a stale frame can't falsely detect end-of-range
+// and call pauseAll() between the seek and the restart.  Debounce the restart
+// so rapid drag events don't pile up dozens of setTimeout calls.
 scrubber.onSeek = ms => {
-  gridPlayer.seekAll(ms);
-  if (_isPlaying) setTimeout(() => startSyncLoop(gridPlayer, scrubber), 150);
+  stopSyncLoop();
+  gridPlayer.seekAll(ms, _isPlaying);
+  if (_isPlaying) {
+    clearTimeout(_seekRestartTimer);
+    _seekRestartTimer = setTimeout(() => {
+      _seekRestartTimer = null;
+      startSyncLoop(gridPlayer, scrubber);
+    }, 150);
+  }
 };
 
 // ESC restores any maximized cell
@@ -1016,7 +1050,8 @@ document.getElementById('btn-play-pause').addEventListener('click', () => {
 // Transport helpers
 function _seekTo(ms) {
   scrubber.setPlayhead(ms);
-  gridPlayer.seekAll(ms);
+  stopSyncLoop(); // stop before seek so stale loop can't falsely trigger end-of-range
+  gridPlayer.seekAll(ms, _isPlaying);
   if (_isPlaying) setTimeout(() => startSyncLoop(gridPlayer, scrubber), 150);
 }
 

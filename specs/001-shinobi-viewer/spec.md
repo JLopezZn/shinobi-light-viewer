@@ -110,6 +110,8 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - **FR-026**: El scrubber DEBE mostrar una fila de indicadores de cobertura por cámara: una franja delgada por cámara activa donde los segmentos de color indican tramos con footage y las zonas oscuras indican ausencia de grabación. Cada cámara recibe un color diferente (paleta apta para daltonismo rojo-verde) y un punto de ese color aparece junto a su nombre en la barra lateral para correlación visual. Las franjas se ajustan al zoom y desplazamiento del scrubber.
 - **FR-027**: Al maximizar una celda (doble clic), DEBE aparecer un botón circular en la esquina inferior derecha que permite activar o silenciar el audio de esa cámara. El ícono refleja el estado actual (🔇 / 🔊). Al restaurar la celda el audio se vuelve a silenciar automáticamente.
 - **FR-028**: Al iniciar una exportación cuando ya hay una en curso, la UI DEBE engancharse a ese trabajo existente (mostrando progreso y botón de cancelar) en lugar de mostrar solo un error. Al recargar la página durante una exportación, la UI DEBE detectar el trabajo activo y reconectarse automáticamente.
+- **FR-029**: El scrubber DEBE soportar desplazamiento horizontal mediante: deslizamiento horizontal en trackpad (dos dedos), `Shift`+rueda vertical del mouse, y la rueda de desplazamiento lateral (tilt-wheel). La rueda vertical sin `Shift` sigue haciendo zoom. Esto complementa el arrastre con el ratón ya existente.
+- **FR-030**: Al mover el playhead (arrastre o clic) durante la reproducción activa, la reproducción DEBE continuar automáticamente desde la nueva posición. El estado de "reproduciendo" no se pierde al hacer seek, incluso si el seek cruza el límite entre dos chunks consecutivos.
 
 ### Key Entities
 

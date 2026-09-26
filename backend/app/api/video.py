@@ -7,7 +7,7 @@ from ..database import get_conn
 
 router = APIRouter()
 
-_CHUNK_SIZE = 1024 * 1024  # 1 MB read buffer
+_CHUNK_SIZE = 2 * 1024 * 1024  # 2 MB read buffer — fewer iterations per stream
 
 
 def _stream_file(path: str, start: int, end: int):
@@ -66,6 +66,9 @@ async def stream_video(chunk_id: int, request: Request):
         "Accept-Ranges": "bytes",
         "Content-Length": str(end - start + 1),
         "Content-Range": f"bytes {start}-{end}/{size}",
+        # Chunks are immutable once Shinobi writes them — cache aggressively so
+        # re-seeks and chunk transitions are served from the browser's disk cache.
+        "Cache-Control": "public, max-age=86400, immutable",
     }
 
     return StreamingResponse(

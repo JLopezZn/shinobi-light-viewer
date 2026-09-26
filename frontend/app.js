@@ -46,6 +46,19 @@ class CellPlayer {
     this._audioBtn.textContent = '🔇';
     containerEl.appendChild(this._audioBtn);
 
+    // Hidden video element used to prefetch the next/target chunk while the
+    // current one is still playing.  With Cache-Control: immutable on the
+    // backend, the browser caches the bytes so the main element can load the
+    // same URL instantly from its disk cache.
+    this._preloadVid = document.createElement('video');
+    this._preloadVid.muted = true;
+    this._preloadVid.playsInline = true;
+    this._preloadVid.preload = 'auto';
+    this._preloadVid.style.cssText =
+      'display:none;width:0;height:0;position:absolute;pointer-events:none';
+    containerEl.appendChild(this._preloadVid);
+    this._preloadChunkId = null;
+
     const { signal } = this._ac;
     // canplay/playing hide the spinner shown by seekTo()/loadChunks().
     // waiting/stalled are NOT wired to _showSpinner because they fire for brief
@@ -75,6 +88,22 @@ class CellPlayer {
     } else {
       this._showSpinner(true);
     }
+  }
+
+  // Start loading chunkId into the shadow video element so the browser caches
+  // the bytes before the main element requests the same URL.
+  _preloadChunk(chunkId) {
+    if (this._preloadChunkId === chunkId) return;
+    this._preloadVid.src = '';
+    this._preloadVid.load(); // abort previous in-flight download
+    this._preloadChunkId = chunkId;
+    this._preloadVid.src = `/api/video/${chunkId}`;
+  }
+
+  _clearPreload() {
+    this._preloadVid.src = '';
+    this._preloadVid.load();
+    this._preloadChunkId = null;
   }
 
   seekTo(virtualTimeMs, shouldPlay = false) {
@@ -113,6 +142,12 @@ class CellPlayer {
         this._videoEl.currentTime = offsetSecs;
         if (wasPlaying) this._videoEl.play().catch(() => {});
       }, { once: true, signal: this._seekAc.signal });
+      // Preload the next chunk while this one loads/plays so chunk transitions
+      // are served from the browser cache instead of hitting the network cold.
+      const chunkIdx = this._chunks.indexOf(chunk);
+      if (chunkIdx >= 0 && chunkIdx < this._chunks.length - 1) {
+        this._preloadChunk(this._chunks[chunkIdx + 1].id);
+      }
     }
   }
 
@@ -166,6 +201,14 @@ class CellPlayer {
   _hideOverlay() {
     if (this._spinnerTimer) { clearTimeout(this._spinnerTimer); this._spinnerTimer = null; }
     this._overlayEl.classList.add('hidden');
+    // As soon as the current chunk starts playing, pre-warm the next one so
+    // chunk transitions hit the browser cache rather than the network.
+    if (this._activeChunk) {
+      const idx = this._chunks.indexOf(this._activeChunk);
+      if (idx >= 0 && idx < this._chunks.length - 1) {
+        this._preloadChunk(this._chunks[idx + 1].id);
+      }
+    }
   }
 
   _onEnded() {
@@ -197,6 +240,7 @@ class CellPlayer {
     if (this._spinnerTimer) clearTimeout(this._spinnerTimer);
     if (this._seekAc) this._seekAc.abort();
     this._ac.abort(); // removes all persistent event listeners
+    this._clearPreload();
     this._videoEl.pause();
     this._videoEl.src = '';
     this._videoEl.load(); // release media resource
@@ -276,6 +320,17 @@ class GridPlayer {
   seekAll(virtualTimeMs, shouldPlay = false) {
     for (const { cell } of this._cells.values()) {
       cell.seekTo(virtualTimeMs, shouldPlay);
+    }
+  }
+
+  // Start prefetching the chunk at `ms` for every active cell immediately —
+  // called on the first onSeek event (before the 80 ms debounce) so the
+  // browser has a head start downloading before seekAll fires.
+  prefetchForMs(ms) {
+    for (const { cell } of this._cells.values()) {
+      const chunk = cell.chunks.find(c => ms >= c.start_ts && ms < c.end_ts)
+                 || cell.chunks.find(c => c.start_ts > ms);
+      if (chunk) cell._preloadChunk(chunk.id);
     }
   }
 
@@ -1006,12 +1061,15 @@ scrubber.onChange = (startPct, endPct, seekMs, handle) => {
 // Playhead drag/click → seek all cells (works during playback too).
 // The scrubber already updates the visual playhead position in _onMove before
 // calling onSeek, so no DOM update is needed here.
-// We debounce the actual chunk load: each pixel of drag cancels the previous
-// timer, so the HTTP request only fires once the user pauses for 80 ms.
-// This prevents the browser's 6-connection-per-origin limit from queuing
-// dozens of stale requests that delay the final seek.
+//
+// Two-stage strategy:
+//   1. IMMEDIATELY: prefetch the target chunk so the browser starts downloading
+//      it (and caching it) during the debounce window.
+//   2. After 80 ms of no movement: actually seek — by now the target chunk has
+//      had a head start and Cache-Control: immutable means re-seeks are instant.
 scrubber.onSeek = ms => {
   stopSyncLoop();
+  gridPlayer.prefetchForMs(ms); // warm up target chunk right away
   clearTimeout(_seekDebounceTimer);
   clearTimeout(_seekRestartTimer);
   _seekDebounceTimer = setTimeout(() => {

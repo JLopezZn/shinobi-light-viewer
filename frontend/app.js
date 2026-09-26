@@ -34,8 +34,10 @@ class CellPlayer {
     this._overlayEl.appendChild(this._msgEl);
     containerEl.appendChild(this._overlayEl);
 
-    this._videoEl.addEventListener('waiting', () => this._showSpinner());
-    this._videoEl.addEventListener('stalled', () => this._showSpinner());
+    // canplay/playing hide the spinner shown by seekTo()/loadChunks().
+    // waiting/stalled are NOT wired to _showSpinner because they fire for brief
+    // buffer stalls during playback: the video would keep playing visually but
+    // the semi-transparent overlay would stay stuck on top of it.
     this._videoEl.addEventListener('canplay', () => this._hideOverlay());
     this._videoEl.addEventListener('playing', () => this._hideOverlay());
     this._videoEl.addEventListener('ended', () => this._onEnded());

@@ -7,7 +7,7 @@ from .database import get_conn
 from .services.ffmpeg import probe_duration_ms
 
 _CHUNK_PATTERN = re.compile(
-    r"(?P<group_key>[^/]+)/(?P<monitor_id>[^/]+)/\d{4}-\d{2}-\d{2}/(?P<filename>[^/]+\.mp4)$"
+    r"(?P<group_key>[^/]+)/(?P<monitor_id>[^/]+)/(?:\d{4}-\d{2}-\d{2}/)?(?P<filename>[^/]+\.mp4)$"
 )
 
 _indexer_state: dict = {

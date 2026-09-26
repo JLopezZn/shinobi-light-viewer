@@ -7,6 +7,7 @@ class CellPlayer {
     this._chunks = [];
     this._activeChunk = null;
     this._hasFootage = true;
+    this._spinnerTimer = null;
 
     // Build DOM: name label, video, overlay
     containerEl.innerHTML = '';
@@ -35,10 +36,11 @@ class CellPlayer {
 
     this._videoEl.addEventListener('waiting', () => this._showSpinner());
     this._videoEl.addEventListener('stalled', () => this._showSpinner());
+    this._videoEl.addEventListener('canplay', () => this._hideOverlay());
     this._videoEl.addEventListener('playing', () => this._hideOverlay());
     this._videoEl.addEventListener('ended', () => this._onEnded());
 
-    this._showSpinner();
+    this._showSpinner(true);
   }
 
   loadChunks(chunks) {
@@ -95,13 +97,20 @@ class CellPlayer {
     this._overlayEl.classList.remove('hidden');
   }
 
-  _showSpinner() {
-    this._spinnerEl.style.display = '';
-    this._msgEl.textContent = '';
-    this._overlayEl.classList.remove('hidden');
+  _showSpinner(force = false) {
+    if (this._spinnerTimer) clearTimeout(this._spinnerTimer);
+    const show = () => {
+      this._spinnerTimer = null;
+      this._spinnerEl.style.display = '';
+      this._msgEl.textContent = '';
+      this._overlayEl.classList.remove('hidden');
+    };
+    if (force) show();
+    else this._spinnerTimer = setTimeout(show, 300);
   }
 
   _hideOverlay() {
+    if (this._spinnerTimer) { clearTimeout(this._spinnerTimer); this._spinnerTimer = null; }
     this._overlayEl.classList.add('hidden');
   }
 
@@ -134,6 +143,7 @@ class GridPlayer {
     if (this._cells.size >= 9) return;
 
     const el = document.createElement('div');
+    el.addEventListener('dblclick', () => el.classList.toggle('maximized'));
     this._containerEl.appendChild(el);
     const cell = new CellPlayer(monitorId, displayName, el);
     this._cells.set(monitorId, { cell, el });
@@ -225,77 +235,242 @@ class GridPlayer {
 
 class Scrubber {
   constructor() {
-    this._el = document.getElementById('scrubber');
-    this._hStart = document.getElementById('h-start');
-    this._hEnd = document.getElementById('h-end');
-    this._rangeEl = document.getElementById('scrubber-range');
-    this._leftEl = document.getElementById('scrubber-left');
-    this._rightEl = document.getElementById('scrubber-right');
-    this._lblRangeStart = document.getElementById('lbl-range-start');
-    this._lblRangeEnd = document.getElementById('lbl-range-end');
+    this._el        = document.getElementById('scrubber');
+    this._hStart    = document.getElementById('h-start');
+    this._hEnd      = document.getElementById('h-end');
+    this._rangeEl   = document.getElementById('scrubber-range');
+    this._leftEl    = document.getElementById('scrubber-left');
+    this._rightEl   = document.getElementById('scrubber-right');
+    this._lblStart  = document.getElementById('lbl-range-start');
+    this._lblEnd    = document.getElementById('lbl-range-end');
+    this._tooltip   = document.getElementById('scrubber-tooltip');
+    this._miniView  = document.getElementById('minimap-view');
+    this._miniS     = document.getElementById('minimap-start');
+    this._miniE     = document.getElementById('minimap-end');
+    this._zoomLbl   = document.getElementById('scrubber-zoom-label');
+    this._hPlay     = document.getElementById('h-play');
 
-    this._startPct = 0;
-    this._endPct = 1;
+    // Handle positions and view window — all in [0,1] relative to full period
+    this._startPct  = 0;
+    this._endPct    = 1;
+    this._playPct   = null;
+    this._viewStart = 0;
+    this._viewEnd   = 1;
+
     this._periodFromMs = null;
-    this._periodToMs = null;
-    this._dragging = null;
+    this._periodToMs   = null;
 
-    this.onChange = null;
+    this._dragging  = null;
+    this._panning   = false;
+    this._panLastX  = null;
 
-    this._hStart.addEventListener('mousedown', e => { this._dragging = 'start'; e.preventDefault(); });
-    this._hEnd.addEventListener('mousedown', e => { this._dragging = 'end'; e.preventDefault(); });
-    document.addEventListener('mousemove', e => this._onMouseMove(e));
-    document.addEventListener('mouseup', () => { this._dragging = null; });
+    this.onChange = null; // (startPct, endPct, seekMs) => {}
+    this.onSeek   = null; // (ms) => {} — fired when playhead is dragged
 
-    // Click inside highlighted range → seek
+    // Handle drag
+    this._hStart.addEventListener('mousedown', e => { this._dragging = 'start'; e.preventDefault(); e.stopPropagation(); });
+    this._hEnd.addEventListener('mousedown',   e => { this._dragging = 'end';   e.preventDefault(); e.stopPropagation(); });
+    this._hPlay.addEventListener('mousedown',  e => { this._dragging = 'play';  e.preventDefault(); e.stopPropagation(); });
+
+    // Pan (drag on bar background)
+    this._el.addEventListener('mousedown', e => {
+      if (e.target === this._hStart || e.target === this._hEnd || e.target === this._hPlay) return;
+      this._panning = true;
+      this._panLastX = e.clientX;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => this._onMove(e));
+    document.addEventListener('mouseup', () => {
+      this._dragging = null;
+      this._panning  = false;
+      this._panLastX = null;
+      this._el.style.cursor = '';
+    });
+
+    // Zoom with mouse wheel
+    this._el.addEventListener('wheel', e => this._onWheel(e), { passive: false });
+
+    // Tooltip on hover
+    this._el.addEventListener('mousemove', e => this._showTooltip(e));
+    this._el.addEventListener('mouseleave', () => { this._tooltip.style.display = 'none'; });
+
+    // Click in highlighted zone → seek
     this._el.addEventListener('click', e => {
-      if (!this._periodFromMs || this._dragging) return;
+      if (!this._periodFromMs) return;
       const rect = this._el.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      if (pct >= this._startPct && pct <= this._endPct) {
-        const virtualMs = this._periodFromMs + pct * (this._periodToMs - this._periodFromMs);
-        if (this.onChange) this.onChange(this._startPct, this._endPct, virtualMs);
+      const vpct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const full = this._v2p(vpct);
+      if (full >= this._startPct && full <= this._endPct) {
+        const ms = this._periodFromMs + full * (this._periodToMs - this._periodFromMs);
+        if (this.onChange) this.onChange(this._startPct, this._endPct, ms);
       }
     });
   }
 
-  reset(periodFromMs, periodToMs) {
-    this._periodFromMs = periodFromMs;
-    this._periodToMs = periodToMs;
-    this._startPct = 0;
-    this._endPct = 1;
+  // period-space → view-space (0–1 of visible bar)
+  _p2v(p) {
+    const sz = this._viewEnd - this._viewStart;
+    return sz === 0 ? 0 : (p - this._viewStart) / sz;
+  }
+
+  // view-space → period-space
+  _v2p(v) {
+    return this._viewStart + v * (this._viewEnd - this._viewStart);
+  }
+
+  _onWheel(e) {
+    e.preventDefault();
+    if (!this._periodFromMs) return;
+    const rect   = this._el.getBoundingClientRect();
+    const vpct   = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pivot  = this._v2p(vpct);
+    const factor = e.deltaY > 0 ? 1.4 : 1 / 1.4;
+    const curSz  = this._viewEnd - this._viewStart;
+    const minSz  = Math.max(1e-5, 5000 / (this._periodToMs - this._periodFromMs)); // min 5 s
+    const newSz  = Math.min(1, Math.max(minSz, curSz * factor));
+
+    let ns = pivot - vpct * newSz;
+    let ne = pivot + (1 - vpct) * newSz;
+    if (ns < 0) { ne -= ns; ns = 0; }
+    if (ne > 1) { ns -= (ne - 1); ne = 1; }
+    this._viewStart = Math.max(0, ns);
+    this._viewEnd   = Math.min(1, ne);
     this._updateDOM();
   }
 
-  _onMouseMove(e) {
+  _onMove(e) {
+    if (this._panning && this._panLastX !== null) {
+      if (!this._periodFromMs) return;
+      const rect    = this._el.getBoundingClientRect();
+      const dx      = e.clientX - this._panLastX;
+      const viewSz  = this._viewEnd - this._viewStart;
+      const delta   = -(dx / rect.width) * viewSz;
+      let ns = this._viewStart + delta;
+      let ne = this._viewEnd   + delta;
+      if (ns < 0) { ne -= ns; ns = 0; }
+      if (ne > 1) { ns -= (ne - 1); ne = 1; }
+      this._viewStart = Math.max(0, ns);
+      this._viewEnd   = Math.min(1, ne);
+      this._panLastX  = e.clientX;
+      this._el.style.cursor = 'grabbing';
+      this._updateDOM();
+      return;
+    }
+
     if (!this._dragging || !this._periodFromMs) return;
-    const rect = this._el.getBoundingClientRect();
-    let pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const rect     = this._el.getBoundingClientRect();
+    const vpct     = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const full     = Math.max(0, Math.min(1, this._v2p(vpct)));
+    const periodMs = this._periodToMs - this._periodFromMs;
+
+    if (this._dragging === 'play') {
+      this._playPct = full;
+      this._updateDOM();
+      const ms = this._periodFromMs + full * periodMs;
+      if (this.onSeek) this.onSeek(ms);
+      return;
+    }
+
+    const minGap   = Math.max(1e-6, 1000 / periodMs); // min 1 s between handles
+
     if (this._dragging === 'start') {
-      pct = Math.min(pct, this._endPct - 0.01);
-      this._startPct = pct;
+      this._startPct = Math.max(0, Math.min(full, this._endPct - minGap));
     } else {
-      pct = Math.max(pct, this._startPct + 0.01);
-      this._endPct = pct;
+      this._endPct   = Math.min(1, Math.max(full, this._startPct + minGap));
     }
     this._updateDOM();
-    const virtualMs = this._periodFromMs + this._startPct * (this._periodToMs - this._periodFromMs);
-    if (this.onChange) this.onChange(this._startPct, this._endPct, virtualMs);
+    const seekMs = this._periodFromMs + this._startPct * periodMs;
+    if (this.onChange) this.onChange(this._startPct, this._endPct, seekMs);
+  }
+
+  _showTooltip(e) {
+    if (!this._periodFromMs) return;
+    const rect  = this._el.getBoundingClientRect();
+    const vpct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ms    = this._periodFromMs + this._v2p(vpct) * (this._periodToMs - this._periodFromMs);
+    this._tooltip.textContent = fmtTime(ms);
+    this._tooltip.style.display = 'block';
+    this._tooltip.style.left = `${e.clientX}px`;
+    this._tooltip.style.top  = `${e.clientY - 34}px`;
   }
 
   _updateDOM() {
-    this._hStart.style.left = `${this._startPct * 100}%`;
-    this._hEnd.style.left = `${this._endPct * 100}%`;
-    this._leftEl.style.width = `${this._startPct * 100}%`;
-    this._rightEl.style.width = `${(1 - this._endPct) * 100}%`;
-    this._rightEl.style.right = '0';
-    this._rightEl.style.left = 'auto';
-    this._rangeEl.style.left = `${this._startPct * 100}%`;
-    this._rangeEl.style.width = `${(this._endPct - this._startPct) * 100}%`;
+    const sv = this._p2v(this._startPct);
+    const ev = this._p2v(this._endPct);
+    const svc = Math.max(0, Math.min(1, sv));
+    const evc = Math.max(0, Math.min(1, ev));
+
+    // Handle positions (clamped to visible bar)
+    this._hStart.style.left       = `${svc * 100}%`;
+    this._hEnd.style.left         = `${evc * 100}%`;
+    this._hStart.style.visibility = sv >= 0 && sv <= 1 ? '' : 'hidden';
+    this._hEnd.style.visibility   = ev >= 0 && ev <= 1 ? '' : 'hidden';
+
+    // Dark outside zones
+    this._leftEl.style.width  = `${svc * 100}%`;
+    this._rightEl.style.width = `${(1 - evc) * 100}%`;
+
+    // Blue range zone
+    const rLeft  = Math.max(0, sv);
+    const rRight = Math.min(1, ev);
+    this._rangeEl.style.left  = `${rLeft * 100}%`;
+    this._rangeEl.style.width = `${Math.max(0, rRight - rLeft) * 100}%`;
+
+    // Labels
     if (this._periodFromMs) {
-      this._lblRangeStart.textContent = fmtTime(this.startMs);
-      this._lblRangeEnd.textContent = fmtTime(this.endMs);
+      this._lblStart.textContent = fmtTime(this.startMs);
+      this._lblEnd.textContent   = fmtTime(this.endMs);
     }
+
+    // Mini-map: view window + handle markers
+    const vs = this._viewEnd - this._viewStart;
+    if (this._miniView) {
+      this._miniView.style.left  = `${this._viewStart * 100}%`;
+      this._miniView.style.width = `${vs * 100}%`;
+    }
+    if (this._miniS) this._miniS.style.left = `${this._startPct * 100}%`;
+    if (this._miniE) this._miniE.style.left = `${this._endPct * 100}%`;
+
+    // Zoom label
+    if (this._zoomLbl) {
+      this._zoomLbl.textContent = vs < 0.99 ? `${(Math.round(10 / vs) / 10)}×` : '';
+    }
+
+    // Playhead marker
+    if (this._hPlay) {
+      if (this._playPct !== null) {
+        const pv = this._p2v(this._playPct);
+        this._hPlay.style.display  = '';
+        this._hPlay.style.left     = `${Math.max(0, Math.min(1, pv)) * 100}%`;
+        this._hPlay.style.visibility = pv >= 0 && pv <= 1 ? '' : 'hidden';
+      } else {
+        this._hPlay.style.display = 'none';
+      }
+    }
+
+    // Cursor hint: grab when zoomed in
+    if (!this._panning) {
+      this._el.style.cursor = vs < 0.99 ? 'grab' : '';
+    }
+  }
+
+  setPlayhead(ms) {
+    if (!this._periodFromMs) return;
+    const total = this._periodToMs - this._periodFromMs;
+    this._playPct = Math.max(0, Math.min(1, (ms - this._periodFromMs) / total));
+    this._updateDOM();
+  }
+
+  reset(periodFromMs, periodToMs) {
+    this._periodFromMs = periodFromMs;
+    this._periodToMs   = periodToMs;
+    this._startPct     = 0;
+    this._endPct       = 1;
+    this._playPct      = 0;
+    this._viewStart    = 0;
+    this._viewEnd      = 1;
+    this._updateDOM();
   }
 
   get startMs() {
@@ -308,9 +483,7 @@ class Scrubber {
     return this._periodFromMs + this._endPct * (this._periodToMs - this._periodFromMs);
   }
 
-  getRangeMs() {
-    return { startMs: this.startMs, endMs: this.endMs };
-  }
+  getRangeMs() { return { startMs: this.startMs, endMs: this.endMs }; }
 }
 
 // ── ExportManager ─────────────────────────────────────────────────────────────
@@ -444,9 +617,13 @@ function startSyncLoop(gridPlayer, scrubber) {
     const virtualNow = master.currentVirtualTimeMs;
     if (virtualNow !== null && virtualNow >= scrubber.endMs) {
       gridPlayer.pauseAll();
+      _isPlaying = false;
       updatePlayPauseButton(false);
       return;
     }
+
+    // Advance playhead
+    if (virtualNow !== null) scrubber.setPlayhead(virtualNow);
 
     // Sync followers
     for (const cell of gridPlayer.activeCells) {
@@ -574,10 +751,22 @@ document.getElementById('btn-confirm-period').addEventListener('click', async ()
   updateExportButton();
 });
 
-// Scrubber change callback
+// Scrubber change callback — don't seek during playback to avoid spinner flicker
 scrubber.onChange = (startPct, endPct, seekMs) => {
-  gridPlayer.seekAll(seekMs);
+  if (!_isPlaying) gridPlayer.seekAll(seekMs);
 };
+
+// Playhead drag → seek all cells (works during playback too)
+scrubber.onSeek = ms => {
+  gridPlayer.seekAll(ms);
+};
+
+// ESC restores any maximized cell
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.cell.maximized').forEach(el => el.classList.remove('maximized'));
+  }
+});
 
 // Play / Pause
 document.getElementById('btn-play-pause').addEventListener('click', () => {

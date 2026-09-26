@@ -45,12 +45,22 @@
         </div>
 
         <div id="scrubber-wrapper">
+          <div id="scrubber-toprow">
+            <span id="scrubber-zoom-label"></span>
+            <span id="scrubber-hint">Rueda: zoom · Arrastrar barra: desplazar</span>
+          </div>
           <div id="scrubber">
             <div id="scrubber-left" class="scrubber-outside"></div>
             <div id="scrubber-range"></div>
             <div id="scrubber-right" class="scrubber-outside"></div>
             <div id="h-start" class="handle" title="Inicio"></div>
             <div id="h-end" class="handle" title="Fin"></div>
+            <div id="h-play" class="handle handle-play" title="Posición actual"></div>
+          </div>
+          <div id="scrubber-minimap">
+            <div id="minimap-view"></div>
+            <div id="minimap-start" class="minimap-marker"></div>
+            <div id="minimap-end" class="minimap-marker"></div>
           </div>
           <div id="scrubber-labels">
             <span id="lbl-period-start"></span>
@@ -74,6 +84,7 @@
     </main>
 
   </div>
+  <div id="scrubber-tooltip"></div>
   <script src="app.js"></script>
 </body>
 </html>

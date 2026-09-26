@@ -200,6 +200,25 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 
 #scrubber-wrapper { display: flex; flex-direction: column; gap: 4px; }
 
+#scrubber-toprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+}
+
+#scrubber-zoom-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #42a5f5;
+  min-width: 36px;
+}
+
+#scrubber-hint {
+  font-size: 10px;
+  color: #555;
+}
+
 #scrubber {
   position: relative;
   height: 20px;
@@ -243,11 +262,77 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 }
 .handle:hover { background: #42a5f5; }
 
+.handle-play {
+  width: 3px;
+  height: 30px;
+  top: -5px;
+  background: #fff;
+  border-radius: 2px;
+  z-index: 3;
+  display: none;
+}
+.handle-play::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border-radius: 50%;
+}
+.handle-play:hover { background: #e0e0e0; }
+
+/* Mini-map: full period overview showing current zoom window */
+#scrubber-minimap {
+  position: relative;
+  height: 6px;
+  background: #222;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#minimap-view {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(30, 136, 229, .35);
+  border: 1px solid rgba(30, 136, 229, .6);
+  box-sizing: border-box;
+  border-radius: 1px;
+}
+
+.minimap-marker {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #42a5f5;
+  transform: translateX(-50%);
+}
+
 #scrubber-labels {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
   color: #666;
+}
+
+/* Tooltip */
+#scrubber-tooltip {
+  position: fixed;
+  display: none;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #fff;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  z-index: 9999;
 }
 
 /* ── Export panel ────────────────────────────────────────────────────────── */
@@ -286,6 +371,16 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   font-size: 12px;
 }
 #export-error.hidden { display: none; }
+
+/* Maximized cell (double-click) */
+.cell.maximized {
+  position: fixed !important;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 100;
+  background: #000;
+}
 
 /* locked state during export */
 body.export-locked #camera-list input[type="checkbox"],

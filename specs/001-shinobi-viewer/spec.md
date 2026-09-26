@@ -42,6 +42,8 @@ En la parte inferior de la pantalla hay una barra de progreso azul que represent
 3. **Given** ambos punteros están posicionados, **When** el operador arrastra el puntero de fin, **Then** la zona a la derecha del puntero queda oscurecida y el grid muestra el frame del fin.
 4. **Given** un rango seleccionado, **When** el operador hace clic en cualquier punto de la zona resaltada, **Then** el grid salta a ese instante en todas las cámaras (scrub de posición).
 5. **Given** los punteros están posicionados, **When** el operador pulsa Play, **Then** la reproducción comienza desde el punto de inicio y se detiene al llegar al punto de fin.
+6. **Given** el grid está reproduciéndose, **When** el operador observa el scrubber, **Then** un tercer marcador blanco (playhead) avanza en tiempo real mostrando el instante actual de reproducción.
+7. **Given** el playhead es visible, **When** el operador lo arrastra a otra posición, **Then** todas las celdas del grid saltan a ese instante y la reproducción continúa desde ahí.
 
 ---
 
@@ -99,6 +101,8 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - **FR-018**: Los archivos temporales de exportación DEBEN eliminarse automáticamente del SSD tras la descarga.
 - **FR-019**: El sistema NUNCA DEBE escribir, modificar, mover, renombrar ni eliminar ningún archivo en el directorio de footage del HDD externo.
 - **FR-020**: Si una cámara activa no tiene footage en el rango seleccionado, su celda DEBE mostrar "Sin footage" y DEBE excluirse de la exportación.
+- **FR-021**: Al pasar el cursor sobre la barra del scrubber, DEBE mostrarse un tooltip con la hora exacta correspondiente al punto bajo el cursor; el tooltip desaparece al salir de la barra.
+- **FR-022**: La barra del scrubber DEBE mostrar un tercer marcador (playhead) que indica la posición actual de reproducción; el marcador avanza automáticamente durante la reproducción y puede arrastrarse para hacer seek a cualquier instante del período, sin interrumpir la reproducción.
 
 ### Key Entities
 

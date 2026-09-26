@@ -168,6 +168,21 @@ T018: period selector (needs GridPlayer)
 
 ---
 
+## Phase 7: Post-MVP Improvements
+
+**Purpose**: UX fixes and quality-of-life enhancements applied after initial implementation.
+
+- [x] T032 Fix date picker defaulting to UTC day instead of local day in `frontend/app.js` — replace `new Date().toISOString().split('T')[0]` with explicit `getFullYear()/getMonth()+1/getDate()` local-time formatting
+- [x] T033 Add scrubber zoom/pan in `frontend/app.js` — `_viewStart`/`_viewEnd` window in period-space [0,1]; `_p2v()`/`_v2p()` converters; mouse wheel zoom (1.4× per tick, min window 5 s, zoom around cursor pivot); drag bar background to pan; zoom label shows current magnification (e.g. "4×"); mini-map bar shows full period with view window highlighted; grab cursor when zoomed in
+- [x] T034 Add scrubber hover tooltip in `frontend/app.js` and `frontend/style.css` — `position:fixed` tooltip div shows formatted time at cursor; displayed on `mousemove`, hidden on `mouseleave`; correct position using `e.clientX / e.clientY - 34`
+- [x] T035 Fix playback stop bug when scrubber handles are dragged during playback in `frontend/app.js` — `scrubber.onChange` must skip `gridPlayer.seekAll()` when `_isPlaying === true`; dragging during play adjusts the range boundary without interrupting video
+- [x] T036 Add cell maximize on double-click in `frontend/app.js` and `frontend/style.css` — `dblclick` on any cell toggles `.maximized` CSS class (`position:fixed; inset:0; width:100vw; height:100vh; z-index:100`); pressing Escape removes `.maximized` from all cells
+- [x] T037 Add spinner buffer in `frontend/app.js` — `_showSpinner()` delays overlay reveal by 300 ms via `setTimeout`; `_hideOverlay()` cancels the pending timer so brief buffering moments (< 300 ms) never flash the spinner; initial overlay on construction is immediate (`force=true`); listen for `canplay` in addition to `playing` to hide overlay earlier
+- [x] T038 Document tooltip (FR-021) and playhead (FR-022) in `specs/001-shinobi-viewer/spec.md` — add Functional Requirements entries and acceptance scenarios for User Story 2
+- [x] T039 Implement playhead marker in `frontend/app.js`, `frontend/index.html`, `frontend/style.css` — `#h-play` white handle (3 px, z-index 3, circle cap via `::before`); Scrubber tracks `_playPct`; `setPlayhead(ms)` called every rAF frame from sync loop; dragging `h-play` fires `onSeek(ms)` which calls `gridPlayer.seekAll()` without stopping playback; playhead hidden before first `reset()`; fix `_isPlaying = false` when sync loop auto-stops at range end
+
+---
+
 ## Implementation Strategy
 
 ### MVP First (User Story 1 Only)

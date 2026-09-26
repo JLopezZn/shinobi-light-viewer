@@ -509,8 +509,10 @@ let _periodToMs = null;
 let _playbackSpeed = 8;
 let _isPlaying = false;
 
-// Default date = today
-document.getElementById('date-picker').value = new Date().toISOString().slice(0, 10);
+// Default date = today (local timezone, not UTC)
+const _today = new Date();
+document.getElementById('date-picker').value =
+  `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}-${String(_today.getDate()).padStart(2, '0')}`;
 
 // Load camera list
 async function loadCameras() {

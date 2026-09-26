@@ -195,6 +195,8 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 }
 
 #btn-play-pause { min-width: 80px; }
+#btn-to-start, #btn-to-end { min-width: 32px; }
+#btn-back-30, #btn-fwd-30  { min-width: 54px; font-size: 12px; }
 
 /* ── Scrubber ────────────────────────────────────────────────────────────── */
 

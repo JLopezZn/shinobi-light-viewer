@@ -41,7 +41,8 @@ En la parte inferior de la pantalla hay una barra de progreso azul que represent
 2. **Given** el scrubber está visible, **When** el operador arrastra el puntero de inicio, **Then** la zona a la izquierda del puntero queda oscurecida (fuera del rango) y el grid salta al frame del nuevo inicio.
 3. **Given** ambos punteros están posicionados, **When** el operador arrastra el puntero de fin, **Then** la zona a la derecha del puntero queda oscurecida y el grid muestra el frame del fin.
 4. **Given** un rango seleccionado, **When** el operador hace clic en cualquier punto de la zona resaltada, **Then** el grid salta a ese instante en todas las cámaras (scrub de posición).
-5. **Given** los punteros están posicionados, **When** el operador pulsa Play, **Then** la reproducción comienza desde el punto de inicio y se detiene al llegar al punto de fin.
+5. **Given** los punteros están posicionados, **When** el operador pulsa Play, **Then** la reproducción comienza desde la posición actual del playhead (o desde el inicio del rango si no hay playhead posicionado) y se detiene al llegar al punto de fin.
+6. **Given** hay un período cargado, **When** el operador usa los controles de transporte (⏮ ⏪ ⏩ ⏭), **Then** el playhead salta a la posición correspondiente y todas las celdas muestran el frame de ese instante.
 6. **Given** el grid está reproduciéndose, **When** el operador observa el scrubber, **Then** un tercer marcador blanco (playhead) avanza en tiempo real mostrando el instante actual de reproducción.
 7. **Given** el playhead es visible, **When** el operador lo arrastra a otra posición, **Then** todas las celdas del grid saltan a ese instante y la reproducción continúa desde ahí.
 
@@ -103,7 +104,8 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - **FR-020**: Si una cámara activa no tiene footage en el rango seleccionado, su celda DEBE mostrar "Sin footage" y DEBE excluirse de la exportación.
 - **FR-021**: Al pasar el cursor sobre la barra del scrubber, DEBE mostrarse un tooltip con la hora exacta correspondiente al punto bajo el cursor; el tooltip desaparece al salir de la barra.
 - **FR-022**: La barra del scrubber DEBE mostrar un tercer marcador (playhead) que indica la posición actual de reproducción; el marcador avanza automáticamente durante la reproducción y puede arrastrarse para hacer seek a cualquier instante del período, sin interrumpir la reproducción.
-- **FR-023**: Al confirmar el período, los handles del scrubber DEBEN auto-posicionarse al rango real del footage disponible (inicio del primer chunk y fin del último chunk, calculado como unión de todas las cámaras activas). Si el operador seleccionó 12:00–22:00 pero el footage solo existe de 17:00–22:00, los handles quedan en 17:00–22:00 automáticamente.
+- **FR-023**: La UI DEBE exponer controles de transporte: ir al inicio del rango (⏮), retroceder 30 s (⏪), play/pausa, avanzar 30 s (⏩) e ir al final del rango (⏭). Los saltos de 30 s se calculan desde la posición actual del playhead y se limitan a los extremos del rango. Todos los controles se habilitan al confirmar el período.
+- **FR-024**: Al confirmar el período, los handles del scrubber DEBEN auto-posicionarse al rango real del footage disponible (inicio del primer chunk y fin del último chunk, calculado como unión de todas las cámaras activas). Si el operador seleccionó 12:00–22:00 pero el footage solo existe de 17:00–22:00, los handles quedan en 17:00–22:00 automáticamente.
 
 ### Key Entities
 

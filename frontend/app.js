@@ -816,7 +816,8 @@ document.getElementById('btn-confirm-period').addEventListener('click', async ()
 
   gridPlayer.seekAll(scrubber.startMs);
 
-  document.getElementById('btn-play-pause').disabled = false;
+  const transportBtns = ['btn-play-pause','btn-to-start','btn-back-30','btn-fwd-30','btn-to-end'];
+  transportBtns.forEach(id => { document.getElementById(id).disabled = false; });
   updateExportButton();
 });
 
@@ -857,6 +858,35 @@ document.getElementById('btn-play-pause').addEventListener('click', () => {
     gridPlayer.pauseAll();
     updatePlayPauseButton(false);
   }
+});
+
+// Transport helpers
+function _seekTo(ms) {
+  scrubber.setPlayhead(ms);
+  gridPlayer.seekAll(ms);
+  if (_isPlaying) setTimeout(() => startSyncLoop(gridPlayer, scrubber), 150);
+}
+
+document.getElementById('btn-to-start').addEventListener('click', () => {
+  if (!_periodFromMs) return;
+  _seekTo(scrubber.startMs);
+});
+
+document.getElementById('btn-to-end').addEventListener('click', () => {
+  if (!_periodFromMs) return;
+  _seekTo(scrubber.endMs);
+});
+
+document.getElementById('btn-back-30').addEventListener('click', () => {
+  if (!_periodFromMs) return;
+  const ms = Math.max(scrubber.startMs, (scrubber.playheadMs ?? scrubber.startMs) - 30_000);
+  _seekTo(ms);
+});
+
+document.getElementById('btn-fwd-30').addEventListener('click', () => {
+  if (!_periodFromMs) return;
+  const ms = Math.min(scrubber.endMs, (scrubber.playheadMs ?? scrubber.startMs) + 30_000);
+  _seekTo(ms);
 });
 
 // Speed selector

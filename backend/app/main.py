@@ -10,9 +10,24 @@ from .database import init_db
 from .indexer import run_indexer_loop
 
 
+def _is_client_disconnect(exc: BaseException) -> bool:
+    """Return True if exc is (or wraps exclusively) client-disconnect errors.
+
+    Starlette 0.20+ raises uvicorn's ClientDisconnected inside an anyio
+    ExceptionGroup/BaseExceptionGroup.  We check by class name to avoid a
+    hard import dependency on uvicorn internals or the exceptiongroup backport.
+    """
+    name = type(exc).__name__
+    if name in ("ClientDisconnected", "BrokenPipeError", "ConnectionResetError"):
+        return True
+    if name in ("ExceptionGroup", "BaseExceptionGroup") and hasattr(exc, "exceptions"):
+        return all(_is_client_disconnect(e) for e in exc.exceptions)
+    return False
+
+
 class _SuppressClientDisconnect:
-    """Silences BrokenPipeError / ConnectionResetError raised when a browser
-    cancels a streaming HTTP request (e.g. video seek mid-transfer).
+    """Silences client-disconnect errors raised when a browser cancels a
+    streaming HTTP request (e.g. video seek mid-transfer).
     These are not server errors and do not need a traceback in the logs."""
 
     def __init__(self, app: ASGIApp) -> None:
@@ -24,8 +39,9 @@ class _SuppressClientDisconnect:
             return
         try:
             await self._app(scope, receive, send)
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # client disconnected mid-stream — normal for range requests
+        except BaseException as exc:
+            if not _is_client_disconnect(exc):
+                raise
 
 
 _fastapi = FastAPI(title="Shinobi Light Viewer")

@@ -7,7 +7,7 @@ class Settings:
         self.footage_dir = Path(os.environ["FOOTAGE_DIR"])
         self.db_path = Path(os.environ["DB_PATH"])
         self.cache_dir = Path(os.environ["CACHE_DIR"])
-        self.port: int = int(os.getenv("PORT", "8080"))
+        self.port: int = int(os.getenv("PORT", "8090"))
         self.scan_interval_seconds: int = int(os.getenv("SCAN_INTERVAL_SECONDS", "60"))
 
         if not self.footage_dir.exists():

@@ -6,119 +6,139 @@
 
 **Status**: Draft
 
-**Input**: User description: "Shinobi Light Viewer — a local web app for safely indexing, browsing, and exporting surveillance footage recorded by Shinobi to an external HDD, without interfering with Shinobi's ongoing writes."
+**Input**: Reproductor local de footage de Shinobi: grid multi-cámara con reproducción timelapse sincronizada y selector de rango dual para exportar.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Browse Camera Timeline (Priority: P1)
+### User Story 1 — Armar el grid de cámaras (Priority: P1)
 
-A security operator opens the viewer in their browser, selects a camera from the list, and navigates a day's worth of recorded footage on a visual timeline. They can jump to any time window and see which clips are available.
+El operador abre el viewer, ve una lista de cámaras disponibles, activa las que quiere monitorear y el sistema construye un grid de video sincronizado — cada celda muestra el timelapse de esa cámara. Si selecciona 1 cámara el grid es 1×1; con 2 o 3 es 1×2 o 1×3; con 4 es 2×2, y así sucesivamente.
 
-**Why this priority**: Without the ability to browse footage, no other feature is reachable. This is the entry point of the entire application and the core value proposition.
+**Why this priority**: Sin el grid no existe la aplicación. Todo lo demás — el scrubber, la exportación — opera sobre este grid.
 
-**Independent Test**: Can be fully tested by running the indexer against a directory of sample `.mp4` files, then loading the UI and verifying that the timeline correctly shows the available clips for each camera.
+**Independent Test**: Apuntar el indexer a un directorio con `.mp4` de muestra de al menos 2 cámaras distintas, seleccionarlas, y verificar que el grid las muestra en celdas separadas reproduciéndose en timelapse y en sincronía.
 
 **Acceptance Scenarios**:
 
-1. **Given** the indexer has scanned the footage directory, **When** a user opens the viewer and selects a camera, **Then** the timeline displays all recorded clips for that camera as a visual timeline with accurate start/end times.
-2. **Given** the timeline is displayed, **When** the user selects a date, **Then** only clips from that date are shown, and empty periods appear as gaps.
-3. **Given** the indexer is running while Shinobi is recording, **When** the indexer encounters a file modified within the last 60 seconds, **Then** that file is skipped and not added to the index until a subsequent scan.
+1. **Given** el indexer ha escaneado el directorio, **When** el operador abre el viewer, **Then** la lista lateral muestra todas las cámaras disponibles con un toggle por cada una.
+2. **Given** el operador activa N cámaras, **When** el grid se arma, **Then** aparecen exactamente N celdas de video organizadas en la grilla más cuadrada posible (1→1×1, 2→1×2, 3→1×3, 4→2×2, 5-6→2×3, etc.).
+3. **Given** el grid está reproduciéndose, **When** el operador desactiva una cámara, **Then** esa celda desaparece y el grid se reorganiza sin interrumpir las demás.
+4. **Given** todas las celdas están activas, **When** se selecciona una fecha y rango horario, **Then** todas las celdas reproducen el timelapse de esa cámara para ese período de forma sincronizada (el mismo punto del tiempo en todas).
 
 ---
 
-### User Story 2 - Export a Merged Clip (Priority: P2)
+### User Story 2 — Scrubber de rango dual (Priority: P2)
 
-An operator selects a start and end time spanning multiple consecutive recorded chunks and downloads a single, continuous `.mp4` file covering the entire selected window.
+En la parte inferior de la pantalla hay una barra de progreso azul que representa el período completo seleccionado. Tiene dos punteros arrastrables: uno de inicio y uno de fin. El operador los arrastra para delimitar la porción exacta que le interesa exportar. La zona seleccionada se resalta visualmente. Al mover los punteros, el grid salta al frame correspondiente en todas las cámaras.
 
-**Why this priority**: Clip export is the primary output action and key business deliverable — the reason users need to review footage is to extract evidence or send it to a stakeholder.
+**Why this priority**: El scrubber es el mecanismo de precisión que convierte la revisión de footage en una acción concreta. Sin él la exportación no tiene delimitación.
 
-**Independent Test**: Can be fully tested by selecting a time range that spans two or more recorded files, triggering an export, and verifying the downloaded file plays from start to finish without gaps or corruption.
+**Independent Test**: Con el grid activo, arrastrar el puntero de inicio al 25 % de la barra y el de fin al 75 %, verificar que la zona intermedia queda resaltada y que todas las celdas del grid muestran el frame del punto de inicio.
 
 **Acceptance Scenarios**:
 
-1. **Given** a user selects a time range, **When** they request an export, **Then** the system identifies all clips intersecting the range and merges them into one continuous file losslessly.
-2. **Given** the export file is ready, **When** the download link is served, **Then** the user can download the file, and the temporary file is automatically deleted from the SSD after delivery.
-3. **Given** the selected time range spans a period with no recorded footage, **When** the user requests an export, **Then** the system notifies the user that no clips cover the selected window.
+1. **Given** hay un período cargado en el grid, **When** el operador abre el viewer, **Then** la barra muestra el período completo con el puntero de inicio al extremo izquierdo y el de fin al extremo derecho.
+2. **Given** el scrubber está visible, **When** el operador arrastra el puntero de inicio, **Then** la zona a la izquierda del puntero queda oscurecida (fuera del rango) y el grid salta al frame del nuevo inicio.
+3. **Given** ambos punteros están posicionados, **When** el operador arrastra el puntero de fin, **Then** la zona a la derecha del puntero queda oscurecida y el grid muestra el frame del fin.
+4. **Given** un rango seleccionado, **When** el operador hace clic en cualquier punto de la zona resaltada, **Then** el grid salta a ese instante en todas las cámaras (scrub de posición).
+5. **Given** los punteros están posicionados, **When** el operador pulsa Play, **Then** la reproducción comienza desde el punto de inicio y se detiene al llegar al punto de fin.
 
 ---
 
-### User Story 3 - Generate a Timelapse Preview (Priority: P3)
+### User Story 3 — Exportar el rango seleccionado (Priority: P3)
 
-An operator wants a quick visual summary of a long time window (e.g., 8 hours). They select the start and end time and receive an accelerated timelapse video covering that period.
+Con el rango delimitado por los punteros, el operador pulsa "Exportar". El sistema genera un archivo `.mp4` por cada cámara activa en el grid, cubriendo exactamente el rango definido. Una barra de progreso muestra el avance. Al terminar, aparece un enlace de descarga por cada archivo.
 
-**Why this priority**: Timelapse is a convenience feature built on the same infrastructure as clip export. It adds significant value for reviewing long periods but is not needed to deliver the core browsing and export workflow.
+**Why this priority**: La exportación es el entregable final del flujo. Depende del grid (US1) y del rango (US2).
 
-**Independent Test**: Can be fully tested by requesting a timelapse for a multi-hour window, verifying the output video duration matches the expected acceleration ratio, and confirming the temporary file is cleaned up post-delivery.
+**Independent Test**: Seleccionar 2 cámaras, posicionar los punteros para delimitar 10 minutos de footage, exportar, y verificar que se generan 2 archivos `.mp4` cuya duración coincide con los 10 minutos seleccionados.
 
 **Acceptance Scenarios**:
 
-1. **Given** a user selects a time range and requests a timelapse, **When** processing completes, **Then** the user receives a playable accelerated video covering the selected period.
-2. **Given** the timelapse is generated, **When** delivery is complete, **Then** the temporary timelapse file is automatically removed from the SSD.
-3. **Given** the footage directory contains gaps within the selected range, **When** the timelapse is generated, **Then** the output video represents only the available footage (no black frames for missing periods).
+1. **Given** hay N cámaras en el grid y un rango seleccionado, **When** el operador pulsa "Exportar", **Then** el sistema genera N archivos `.mp4` — uno por cámara — cubriendo exactamente el rango indicado.
+2. **Given** una exportación en curso, **When** el sistema está procesando, **Then** se muestra una barra de progreso global y el botón "Exportar" se deshabilita.
+3. **Given** la exportación terminó, **When** todos los archivos están listos, **Then** aparece un enlace de descarga por cada cámara, etiquetado con el nombre de la cámara.
+4. **Given** el operador descarga un archivo, **When** la descarga completa, **Then** el archivo temporal se elimina automáticamente del SSD.
+5. **Given** el rango seleccionado contiene gaps (períodos sin footage), **When** se exporta, **Then** el archivo resultante contiene solo el footage disponible, sin frames negros.
 
 ---
 
 ### Edge Cases
 
-- What happens when a file is still being written by Shinobi at scan time (mtime < 60 seconds)?
-- What happens when the selected time range spans multiple days with no continuous footage?
-- When local SSD disk space is insufficient: the system pre-checks space before starting and rejects the job with a clear message (FR-014).
-- When a previously indexed clip is deleted by Shinobi's retention policy: the indexer marks it as `unavailable` on the next scan; the timeline shows it grayed-out and non-selectable (FR-016).
-- What happens when two cameras have overlapping time ranges and one is selected for export?
+- ¿Qué pasa si una cámara no tiene footage en el período seleccionado? → Mostrar la celda vacía con un mensaje "Sin footage" y excluirla de la exportación.
+- ¿Qué pasa si el puntero de inicio se arrastra más allá del puntero de fin? → Los punteros no se cruzan; el de inicio tiene un tope en la posición del de fin menos 1 segundo, y viceversa.
+- ¿Qué pasa si no hay ninguna cámara activa y el operador pulsa Exportar? → El botón permanece deshabilitado cuando el grid está vacío.
+- ¿Qué pasa si hay una exportación en curso y el operador cambia el rango o las cámaras? → Los controles de rango y selección de cámaras se bloquean durante la exportación.
+- ¿Qué pasa si el SSD no tiene espacio suficiente para los N archivos? → Pre-chequear espacio antes de iniciar; rechazar con mensaje claro si es insuficiente.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: The indexer MUST recursively scan the configured footage directory and index `.mp4` files using Shinobi's folder structure (`GroupKey/MonitorID/YYYY-MM-DD/filename.mp4`).
-- **FR-002**: The indexer MUST skip any file whose modification time is within the last 60 seconds to prevent race conditions with Shinobi's active writes.
-- **FR-003**: The indexer MUST store all metadata (file paths, start times, end times, durations, sizes) exclusively in a local SQLite database on the system SSD — never writing anything to the external HDD.
-- **FR-004**: The system MUST expose an endpoint to list all available cameras/monitors discovered during indexing.
-- **FR-005**: The system MUST expose an endpoint to query video chunks by camera and time range, returning results in milliseconds from the local database.
-- **FR-006**: Users MUST be able to select a precise start and end time window via the UI for both export and timelapse operations.
-- **FR-007**: The system MUST identify all `.mp4` files that intersect a user-selected time range for merge and timelapse operations.
-- **FR-008**: The system MUST merge selected clips losslessly into a single continuous `.mp4` file without re-encoding the video stream.
-- **FR-009**: The system MUST generate accelerated timelapse previews for a user-selected time window, caching the temporary output on the local SSD.
-- **FR-010**: The system MUST provide a temporary download link for exported clips and timelapse files, and MUST automatically delete these files from the SSD after delivery.
-- **FR-011**: The system MUST NEVER write, modify, move, rename, or delete any files within the Shinobi footage directory on the external HDD.
-- **FR-012**: The indexer MUST perform a full scan of the footage directory immediately on application startup, and MUST continue scanning automatically on a fixed 60-second interval for the entire lifetime of the process.
-- **FR-013**: The system MUST allow only one active export or timelapse job at a time. If a job is already in progress when a new request arrives, the system MUST reject the new request immediately with a clear message informing the user that a job is already running.
-- **FR-014**: Before starting any export or timelapse job, the system MUST verify that the local SSD has sufficient free space to accommodate the estimated output file. If space is insufficient, the system MUST reject the job with a clear message before any processing begins; no partial files shall be written.
-- **FR-015**: While an export or timelapse job is in progress, the UI MUST display a progress bar reflecting job completion status and MUST provide a cancel button that aborts the job and removes any partial output files from the SSD.
-- **FR-016**: During each scan cycle, the indexer MUST check whether previously indexed chunks still exist on the HDD. Any chunk whose file is no longer present MUST be marked as `unavailable` in the index. The UI MUST render unavailable chunks as visually distinct (e.g., grayed-out) on the timeline; they MUST NOT be selectable for export or timelapse operations.
+- **FR-001**: El indexer DEBE escanear recursivamente el directorio de footage e indexar archivos `.mp4` usando la estructura de Shinobi (`GroupKey/MonitorID/[YYYY-MM-DD/]filename.mp4`). El segmento de fecha es opcional.
+- **FR-002**: El indexer DEBE omitir cualquier archivo cuya fecha de modificación sea de hace menos de 60 segundos.
+- **FR-003**: El indexer DEBE almacenar todos los metadatos exclusivamente en una base SQLite local en el SSD — sin escribir nunca en el HDD externo.
+- **FR-004**: El indexer DEBE ejecutar un escaneo completo al arrancar y repetirlo cada 60 segundos.
+- **FR-005**: El sistema DEBE exponer un endpoint para listar todas las cámaras/monitores disponibles.
+- **FR-006**: El sistema DEBE exponer un endpoint para consultar chunks de video por cámara y rango de tiempo.
+- **FR-006b**: El sistema DEBE servir los archivos `.mp4` del HDD de forma directa mediante HTTP con soporte de Range Requests (`Accept-Ranges: bytes`), para que el browser pueda cargar y controlar la reproducción sin procesamiento previo.
+- **FR-007**: La UI DEBE mostrar una lista lateral de cámaras con un toggle (activar/desactivar) por cada una.
+- **FR-007b**: La UI DEBE proveer un selector de fecha más dos inputs de hora (inicio y fin del período) para definir el período de tiempo visible en el grid. Al confirmar el período, todas las celdas activas cargan y sincronizan su reproducción a partir del inicio del período.
+- **FR-008**: La UI DEBE construir un grid de celdas de video con una celda por cámara activa, reorganizándose dinámicamente al activar o desactivar cámaras. El grid soporta un máximo de 9 cámaras simultáneas (3×3); el toggle de una décima cámara se deshabilita mientras haya 9 activas.
+- **FR-009**: Cada celda del grid DEBE reproducir los chunks de su cámara directamente en un elemento `<video>` del browser a velocidad acelerada (`playbackRate`), sincronizada con todas las demás celdas al mismo instante de tiempo. El timelapse es un efecto client-side; no se genera ningún archivo intermedio en el servidor para la visualización.
+- **FR-010**: La UI DEBE mostrar una barra de scrubber con dos punteros arrastrables (inicio y fin) que delimitan el rango de exportación.
+- **FR-010b**: La UI DEBE proveer un selector de velocidad de reproducción con cuatro valores discretos: 1×, 4×, 8× (por defecto) y 16×. Al cambiar la velocidad, el `playbackRate` de todas las celdas activas se actualiza en sincronía.
+- **FR-010c**: Mientras una celda está cargando o bufferando, DEBE mostrar un spinner centrado sobre fondo oscuro con el nombre de la cámara visible en la parte superior. Una vez listo el video, el spinner desaparece y la reproducción comienza automáticamente.
+- **FR-011**: Al mover cualquier puntero, todas las celdas del grid DEBEN saltar al frame correspondiente al instante del puntero.
+- **FR-012**: La zona del scrubber fuera del rango seleccionado DEBE oscurecerse visualmente; la zona dentro DEBE resaltarse en azul.
+- **FR-013**: El sistema DEBE generar un archivo `.mp4` por cada cámara activa en el grid, cubriendo exactamente el rango delimitado por los punteros, usando concatenación lossless.
+- **FR-014**: Antes de iniciar cualquier exportación, el sistema DEBE verificar que el SSD tiene espacio suficiente para N archivos; si no, rechazar con mensaje claro.
+- **FR-015**: Solo puede haber una exportación activa a la vez; nuevas solicitudes DEBEN rechazarse con HTTP 409 mientras haya una en curso.
+- **FR-016**: Durante la exportación, la UI DEBE mostrar una barra de progreso global y bloquear los controles de cámara y scrubber.
+- **FR-017**: Al completar la exportación, la UI DEBE mostrar un enlace de descarga por cada archivo, etiquetado con el nombre de la cámara.
+- **FR-018**: Los archivos temporales de exportación DEBEN eliminarse automáticamente del SSD tras la descarga.
+- **FR-019**: El sistema NUNCA DEBE escribir, modificar, mover, renombrar ni eliminar ningún archivo en el directorio de footage del HDD externo.
+- **FR-020**: Si una cámara activa no tiene footage en el rango seleccionado, su celda DEBE mostrar "Sin footage" y DEBE excluirse de la exportación.
 
 ### Key Entities
 
-- **Monitor**: A Shinobi camera identified by a `GroupKey` and `MonitorID`, used to scope timeline queries and exports.
-- **Video Chunk**: A single recorded `.mp4` file with a start timestamp, end timestamp, duration, file size, absolute path on the HDD, and an availability status (`available` or `unavailable`) updated on each scan cycle.
-- **Index**: The local SQLite database on the SSD containing all `monitors` and `video_chunks` records.
-- **Export Job**: A transient operation that merges one or more video chunks into a single output file on the SSD, with a lifecycle ending at download completion.
-- **Timelapse Job**: A transient operation that produces an accelerated preview video from a set of indexed chunks, with a lifecycle ending at download completion.
+- **Monitor**: Cámara de Shinobi identificada por `GroupKey` + `MonitorID`.
+- **VideoChunk**: Archivo `.mp4` grabado con start\_ts, end\_ts, duración, tamaño y ruta absoluta en el HDD.
+- **Index**: Base SQLite en el SSD con tablas `monitors` y `video_chunks`.
+- **GridCell**: Representación en UI de una cámara activa dentro del grid; contiene el estado de reproducción (posición actual, buffering).
+- **ScrubRange**: El par (start\_ts, end\_ts) definido por los dos punteros del scrubber; determina qué se exporta.
+- **ExportJob**: Operación transitoria que genera N archivos `.mp4` (uno por cámara activa) en el SSD, con ciclo de vida que termina al completarse todas las descargas.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Timeline queries for a full 24-hour window on a single camera return results in under 500 milliseconds.
-- **SC-002**: The indexer completes a full scan of a 10,000-file footage directory without causing any file access errors or interruptions to Shinobi's recording process.
-- **SC-003**: A merged clip export for a 1-hour recording is available for download within 2 minutes of the user requesting it.
-- **SC-004**: A timelapse preview for a 1-hour window is available for download within 60 seconds of the user requesting it.
-- **SC-005**: Exported merged clips play back without gaps, corruption, or quality loss compared to the source footage.
-- **SC-006**: Temporary export and timelapse files are automatically removed from the SSD within 60 seconds of the user's download completing.
+- **SC-001**: El grid con hasta 9 cámaras activas carga y comienza a reproducirse en menos de 3 segundos tras seleccionar el período.
+- **SC-002**: Al arrastrar un puntero del scrubber, todas las celdas del grid actualizan su frame en menos de 500 ms.
+- **SC-003**: La exportación de un rango de 1 hora para 4 cámaras simultáneas está disponible para descarga en menos de 5 minutos.
+- **SC-004**: Los archivos exportados reproducen exactamente el rango seleccionado sin gaps ni corrupción.
+- **SC-005**: Los archivos temporales de exportación se eliminan del SSD en menos de 60 segundos tras completarse cada descarga.
+- **SC-006**: El indexer completa un escaneo de 10 000 archivos sin errores ni interrupciones en la grabación de Shinobi.
 
 ## Assumptions
 
-- The Shinobi footage directory path is configurable at startup and does not change during operation.
-- The viewer is deployed locally on the same machine that hosts the SSD index database — there is no multi-user or remote-deployment requirement for v1.
-- FFmpeg is installed and accessible on the host system's PATH.
-- The external HDD is mounted and readable at all times while the application is running; the application does not need to handle hot-plug or reconnect scenarios.
-- Shinobi's own retention policy may delete clips from the HDD; the indexer marks stale entries as `unavailable` on the next scan cycle and the UI reflects this state (FR-016).
-- Mobile browser support is out of scope for v1; the UI targets desktop browsers only.
-- Authentication and access control are out of scope for v1, as the viewer is intended for local LAN use only.
+- El directorio de footage de Shinobi es configurable al arrancar y no cambia durante la operación.
+- El viewer se ejecuta localmente en la misma máquina que aloja el SSD — no hay requisito multi-usuario ni despliegue remoto en v1.
+- FFmpeg está instalado y accesible en el PATH del sistema.
+- El HDD externo está montado y es legible en todo momento; no se manejan escenarios de desconexión en caliente.
+- La autenticación y el control de acceso están fuera del alcance de v1; el viewer es para uso local en LAN.
+- El soporte para navegadores móviles está fuera del alcance de v1; la UI apunta a navegadores de escritorio.
+- El timelapse del grid es el modo de visualización principal; la velocidad de reproducción es configurable (por defecto 8×).
 
 ## Clarifications
 
-### Session 2026-09-25
+### Session 2026-09-25 (rev2 — nuevo spec)
+
+- Q: ¿Cómo se reproduce el video en cada celda del grid — el backend genera un timelapse o el browser carga los chunks directamente? → A: El browser carga los chunks directamente vía HTTP Range Requests y los reproduce a alta velocidad (`playbackRate`). FFmpeg solo se usa para exportar.
+- Q: ¿Cuántas cámaras simultáneas debe soportar el grid como máximo? → A: Máximo 9 cámaras (grilla 3×3); la décima se deshabilita si ya hay 9 activas.
+- Q: ¿Cómo selecciona el operador el período de tiempo que se muestra en el grid? → A: Selector de fecha + dos inputs de hora (inicio y fin). El scrubber dual opera dentro de ese período para delimitar el sub-rango de exportación.
+- Q: ¿Puede el operador cambiar la velocidad de reproducción del grid desde la UI? → A: Sí, selector con valores discretos: 1×, 4×, 8× (por defecto), 16×.
+- Q: ¿Qué debe mostrar una celda del grid mientras los chunks están cargando o bufferando? → A: Spinner centrado sobre fondo oscuro con el nombre de la cámara visible arriba; desaparece al comenzar la reproducción.
 
 - Q: How should the indexer determine when to scan the footage directory for new clips? → A: Startup scan immediately on launch, then periodic every 60 seconds.
 - Q: If a user submits a new export or timelapse request while one is already processing, what should the system do? → A: Allow only one active job at a time; reject new requests with a clear error message while busy.

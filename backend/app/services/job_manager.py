@@ -1,99 +1,130 @@
-import asyncio
 import secrets
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import HTTPException
 
-job_state: dict = {
+_state: dict = {
     "status": "idle",
     "type": None,
-    "progress": 0.0,
-    "proc": None,
-    "output_path": None,
+    "cameras": [],
     "error": None,
-    "download_token": None,
 }
-
-tokens: dict[str, Path] = {}
 
 
 def is_idle() -> bool:
-    return job_state["status"] == "idle"
+    return _state["status"] == "idle"
 
 
-def start_job(job_type: str, output_path: Path, proc: asyncio.subprocess.Process) -> None:
-    job_state.update({
-        "status": "running",
-        "type": job_type,
-        "progress": 0.0,
-        "proc": proc,
-        "output_path": output_path,
-        "error": None,
-        "download_token": None,
-    })
+def get_state() -> dict:
+    return _state
 
 
-def update_progress(pct: float) -> None:
-    job_state["progress"] = min(pct, 1.0)
+def get_overall_progress() -> float:
+    cameras = _state["cameras"]
+    if not cameras:
+        return 0.0
+    return min(c["progress"] for c in cameras)
 
 
-def complete_job() -> str:
-    token = secrets.token_urlsafe(32)
-    tokens[token] = job_state["output_path"]
-    job_state.update({
-        "status": "done",
-        "progress": 1.0,
+def make_camera_entry(monitor_id: int, display_name: str) -> dict:
+    return {
+        "monitor_id": monitor_id,
+        "display_name": display_name,
+        "output_path": None,
+        "filelist_path": None,
         "proc": None,
-        "download_token": token,
+        "progress": 0.0,
+        "download_token": None,
+    }
+
+
+def start_export(cameras: List[dict]) -> None:
+    _state.update({
+        "status": "running",
+        "type": "export",
+        "cameras": cameras,
+        "error": None,
     })
+
+
+def update_camera_progress(monitor_id: int, pct: float) -> None:
+    for cam in _state["cameras"]:
+        if cam["monitor_id"] == monitor_id:
+            cam["progress"] = min(pct, 0.99)
+            break
+
+
+def complete_camera(monitor_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    for cam in _state["cameras"]:
+        if cam["monitor_id"] == monitor_id:
+            cam["download_token"] = token
+            cam["progress"] = 1.0
+            cam["proc"] = None
+            break
+    if all(c["download_token"] is not None for c in _state["cameras"]):
+        _state["status"] = "done"
     return token
 
 
 def fail_job(error: str) -> None:
-    _cleanup_output()
-    job_state.update({
-        "status": "failed",
-        "proc": None,
-        "error": error,
-    })
+    _cleanup_files()
+    _state["status"] = "failed"
+    _state["error"] = error
+    for cam in _state["cameras"]:
+        cam["proc"] = None
 
 
 def cancel_job() -> None:
-    proc = job_state.get("proc")
-    if proc:
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-    _cleanup_output()
-    job_state.update({
+    for cam in _state["cameras"]:
+        proc = cam.get("proc")
+        if proc:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        cam["proc"] = None
+    _cleanup_files()
+    _reset()
+
+
+def _cleanup_files() -> None:
+    for cam in _state["cameras"]:
+        out = cam.get("output_path")
+        if out:
+            p = Path(out)
+            if p.exists():
+                p.unlink(missing_ok=True)
+        fl = cam.get("filelist_path")
+        if fl:
+            p = Path(fl)
+            if p.exists():
+                p.unlink(missing_ok=True)
+
+
+def _reset() -> None:
+    _state.update({
         "status": "idle",
         "type": None,
-        "progress": 0.0,
-        "proc": None,
-        "output_path": None,
+        "cameras": [],
         "error": None,
-        "download_token": None,
     })
 
 
-def _cleanup_output() -> None:
-    path: Path | None = job_state.get("output_path")
-    if path and path.exists():
-        path.unlink(missing_ok=True)
-    filelist = path.parent / "filelist.txt" if path else None
-    if filelist and filelist.exists():
-        filelist.unlink(missing_ok=True)
-
-
 def consume_token(token: str) -> Optional[Path]:
-    return tokens.pop(token, None)
+    for cam in _state["cameras"]:
+        if cam.get("download_token") == token:
+            cam["download_token"] = None
+            path_str = cam.get("output_path")
+            cam["output_path"] = None
+            return Path(path_str) if path_str else None
+    return None
 
 
 def check_disk_space(estimated_bytes: int, cache_dir: Path) -> None:
-    free = shutil.disk_usage(cache_dir).free
+    free = shutil.disk_usage(str(cache_dir)).free
     required = int(estimated_bytes * 1.1)
     if free < required:
         req_mb = required // (1024 * 1024)

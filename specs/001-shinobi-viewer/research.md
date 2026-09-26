@@ -1,113 +1,134 @@
-# Research: Shinobi Light Viewer
+# Research: Shinobi Light Viewer (rev2)
 
 **Date**: 2026-09-25 | **Plan**: [plan.md](plan.md)
 
-## Decision 1: FFmpeg Lossless Concatenation
+## Decision 1: Sincronización multi-`<video>`
 
-**Decision**: Use the FFmpeg concat demuxer with stream copy (`-c copy`).
+**Decision**: Un video como master; los demás se corrigen con `requestAnimationFrame` mientras están reproduciéndose. Tolerancia de 50 ms antes de forzar corrección.
 
-**Rationale**: No re-encoding means zero quality loss and fast processing (limited by disk read speed, not CPU). The concat demuxer adjusts timestamps so each segment continues from where the last ended, producing a seamless output file.
+**Rationale**: `rAF` solo corre mientras el video está en play — no acumula drift como `setInterval`. La corrección es lightweight (solo `currentTime` assignment cuando excede tolerancia). Sin librerías externas.
 
-**Command pattern**:
-```bash
-# Build input list
-printf "file '%s'\n" /path/to/chunk1.mp4 /path/to/chunk2.mp4 > /tmp/filelist.txt
+**Patrón clave**:
+```js
+const MASTER = videos[0];
+const TOLERANCE = 0.05; // seconds
 
-# Merge losslessly
-ffmpeg -f concat -safe 0 -i /tmp/filelist.txt -c copy output.mp4
+function syncLoop() {
+  const t = MASTER.currentTime;
+  for (let i = 1; i < videos.length; i++) {
+    if (Math.abs(videos[i].currentTime - t) > TOLERANCE) {
+      videos[i].currentTime = t;
+    }
+  }
+  if (!MASTER.paused) requestAnimationFrame(syncLoop);
+}
+
+function play()   { videos.forEach(v => { v.currentTime = MASTER.currentTime; v.play(); }); requestAnimationFrame(syncLoop); }
+function pause()  { videos.forEach(v => v.pause()); }
+function seek(vt) { videos.forEach(v => { v.currentTime = vt; }); }
 ```
 
-**Alternatives considered**: Re-encoding with `-c:v libx264` — rejected because it violates FR-008 (lossless requirement) and would be far slower.
-
-**Known gotcha**: If source files have non-zero start PTS (possible with some IP cameras), A/V drift may occur. Mitigation: probe source files with `ffprobe` at index time and flag chunks with non-standard PTS for warning in export.
+**Alternativas consideradas**: `setInterval` — descartado por drift acumulativo. MediaSource Extensions — demasiado complejo para v1, requeriría server-sent chunks.
 
 ---
 
-## Decision 2: Timelapse Generation (No Black Frames for Gaps)
+## Decision 2: Navegación entre chunks (chunk boundary)
 
-**Decision**: Concat demuxer + `setpts` video filter. Gaps between recordings are absent from the `filelist.txt`; the concat demuxer naturally omits missing periods.
+**Decision**: Cada celda mantiene un array de chunks ordenado por `startTime`. Al buscar un `virtualTime`, se hace `find()` para localizar el chunk correcto y se calcula el offset dentro de él.
 
-**Rationale**: Using `setpts=<1/speed>*PTS` accelerates playback by rewriting presentation timestamps. Because the concat demuxer continuously adjusts timestamps, gap periods never appear in the output stream — they simply don't exist in the input.
+**Patrón clave**:
+```js
+// chunks = [{ src, startTime, endTime }, ...]  — startTime/endTime en ms epoch
 
-**Command pattern** (10× speed-up):
-```bash
-ffmpeg -f concat -safe 0 -i /tmp/filelist.txt \
-  -vf "setpts=0.1*PTS" \
-  -r 30 \
-  -an \
-  output_timelapse.mp4
+function seekCamera(videoEl, chunks, virtualTimeMs) {
+  const chunk = chunks.find(c => virtualTimeMs >= c.startTime && virtualTimeMs < c.endTime);
+  if (!chunk) return;
+  videoEl.src = chunk.src;
+  videoEl.addEventListener('loadedmetadata', () => {
+    videoEl.currentTime = (virtualTimeMs - chunk.startTime) / 1000;
+  }, { once: true });
+}
+
+function loadNextChunk(videoEl, chunks, currentChunk) {
+  const next = chunks[chunks.indexOf(currentChunk) + 1];
+  if (next) { videoEl.src = next.src; videoEl.play(); }
+}
+
+videoEl.addEventListener('ended', () => loadNextChunk(videoEl, chunks, activeChunk));
 ```
 
-**Speed factor**: The UI allows the user to select a time range; the speed factor will be computed automatically to target a ~60-second output (SC-004). Formula: `speed = total_source_duration / 60`.
-
-**Alternatives considered**: Extracting keyframes as images + `ffmpeg -r <fps> -i frame_%04d.jpg` — rejected because it requires full decode of all frames (slow) and introduces quality loss from JPEG re-compression.
+**Alternativas consideradas**: MSE (Media Source Extensions) para playlist continua — descartado por complejidad en v1. `<source>` múltiples en un `<video>` — no permite seek entre chunks correctamente.
 
 ---
 
-## Decision 3: FFmpeg Progress Reporting
+## Decision 3: HTTP Range Request streaming (FastAPI)
 
-**Decision**: Use `-progress pipe:1 -nostats` to emit machine-readable key=value lines to stdout; parse `out_time` and compute percentage against total duration.
+**Decision**: Endpoint `GET /api/video/{chunk_id}` que lee el archivo con `open()` + `seek()` y responde `206 Partial Content` para requests de rango, `200` para requests completos. Siempre incluye `Accept-Ranges: bytes`.
 
-**Rationale**: The `-progress` flag produces structured output at every frame, making it reliable and race-condition-free. Total duration is obtained via `ffprobe` before the job starts, enabling a real percentage.
+**Rationale**: El browser necesita `206` (no `200`) para habilitar seeking dentro del archivo. Leer con `seek()` es esencial para archivos de varios GB — nunca cargar el archivo completo en memoria.
 
-**Python pattern**:
+**Patrón clave**:
 ```python
-proc = await asyncio.create_subprocess_exec(
-    "ffmpeg", "-progress", "pipe:1", "-nostats", "-f", "concat",
-    "-safe", "0", "-i", filelist_path, "-c", "copy", output_path,
-    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
-)
-async for line in proc.stdout:
-    m = re.search(rb"out_time_ms=(\d+)", line)
-    if m:
-        elapsed_ms = int(m.group(1))
-        job["progress"] = min(elapsed_ms / total_duration_ms, 1.0)
+@app.get("/api/video/{chunk_id}")
+async def stream_video(chunk_id: int, request: Request):
+    path = resolve_chunk_path(chunk_id)   # lookup en DB
+    size = os.path.getsize(path)
+    range_header = request.headers.get("range")
+    start, end = 0, size - 1
+    status = 200
+    if range_header:
+        parts = range_header.strip("bytes=").split("-")
+        start = int(parts[0]) if parts[0] else 0
+        end   = int(parts[1]) if parts[1] else size - 1
+        status = 206
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(end - start + 1),
+        "Content-Range": f"bytes {start}-{end}/{size}",
+    }
+    return StreamingResponse(
+        _stream_file(path, start, end),
+        status_code=status, media_type="video/mp4", headers=headers
+    )
 ```
 
-**Alternatives considered**: Parsing stderr `time=HH:MM:SS` — less reliable, mixes with other log output, requires line buffering workarounds.
+**Alternativas consideradas**: `FileResponse` de FastAPI — no soporta Range Requests correctamente en todas las versiones. StaticFiles mount — imposible para archivos en rutas arbitrarias del HDD externo.
 
 ---
 
-## Decision 4: Single-Job Management (FastAPI)
+## Decision 4: Scrubber dual handle (vanilla JS)
 
-**Decision**: Module-level async state dict + `asyncio.create_subprocess_exec` + `asyncio.create_task`. Conflict returns HTTP 409.
+**Decision**: Dos `<div>` draggables posicionados con `left: X%` sobre una barra. El constraint (no cruzarse) se aplica en `mousemove` antes de actualizar `style.left`.
 
-**Rationale**: `asyncio` subprocess is non-blocking and integrates naturally with FastAPI's event loop. No thread pool needed. A simple module-level dict is sufficient for a single-user local app; no persistence required since jobs are transient.
-
-**Key pattern**:
-```python
-job_state = {"proc": None, "progress": 0.0, "status": "idle", "output_path": None}
-
-# On new request: check status == "idle", else raise HTTPException(409)
-# On cancel: job_state["proc"].kill() + cleanup output_path + reset state
+**Patrón clave**:
+```js
+let dragging = null;
+document.querySelectorAll(".handle").forEach(h =>
+  h.addEventListener("mousedown", e => { dragging = h; e.preventDefault(); })
+);
+document.addEventListener("mousemove", e => {
+  if (!dragging) return;
+  const { left, width } = document.querySelector(".scrubber").getBoundingClientRect();
+  let pct = Math.max(0, Math.min(1, (e.clientX - left) / width));
+  const otherId = dragging.id === "h-start" ? "h-end" : "h-start";
+  const otherPct = parseFloat(document.getElementById(otherId).style.left) / 100;
+  pct = dragging.id === "h-start"
+    ? Math.min(pct, otherPct - 0.01)
+    : Math.max(pct, otherPct + 0.01);
+  dragging.style.left = (pct * 100) + "%";
+  onScrubChange();  // callback para actualizar virtualTime en el grid
+});
+document.addEventListener("mouseup", () => { dragging = null; });
 ```
 
-**Alternatives considered**: Celery / Redis task queue — massively over-engineered for a single-user local app with one concurrent job.
+**Alternativas consideradas**: `<input type="range">` nativo — no soporta dos handles en HTML estándar. Librerías externas (noUiSlider, etc.) — descartadas para mantener cero dependencias en frontend.
 
 ---
 
-## Decision 5: One-Time Download Token
+## Decision 5: FFmpeg export (sin cambios respecto a v1)
 
-**Decision**: In-memory `dict[str, Path]` token store. Token is consumed (`.pop()`) on first access. File deletion via FastAPI `BackgroundTasks` after `FileResponse` streams completely.
+**Decision**: Concat demuxer + `-c copy` para merge lossless. Progreso via `-progress pipe:1`. Un job a la vez. N archivos paralelos para N cámaras.
 
-**Rationale**: Single-use token prevents accidental double-download, satisfies FR-010 (auto-delete after delivery), and requires zero persistence.
+**Cambio respecto a v1**: El export ahora genera N archivos simultáneamente (uno por cámara activa), pero cada uno es un proceso FFmpeg independiente. Los N procesos corren en paralelo como `asyncio` tasks bajo el mismo job. El progreso se reporta como el mínimo de avance entre todos los procesos (el más lento marca el ritmo).
 
-**Pattern**:
-```python
-tokens: dict[str, Path] = {}
-
-def issue_token(path: Path) -> str:
-    t = secrets.token_urlsafe(32)
-    tokens[t] = path
-    return t
-
-@app.get("/api/downloads/{token}")
-async def download(token: str, background_tasks: BackgroundTasks):
-    path = tokens.pop(token, None)
-    if not path or not path.exists():
-        raise HTTPException(404)
-    background_tasks.add_task(path.unlink, missing_ok=True)
-    return FileResponse(path, media_type="video/mp4")
-```
-
-**Alternatives considered**: Serving via signed URL with expiry — unnecessary complexity for a LAN-only app with no CDN.
+**Rationale**: Exportar en paralelo minimiza el tiempo total. El "single job" constraint aplica a nivel de sesión de exportación (no se pueden lanzar dos exportaciones mientras una está activa), no a nivel de proceso FFmpeg interno.

@@ -19,10 +19,11 @@ async def startup() -> None:
     )
 
 
-from .api import monitors, chunks, jobs  # noqa: E402 — after app creation
+from .api import chunks, jobs, monitors, video  # noqa: E402
 
 app.include_router(monitors.router, prefix="/api")
 app.include_router(chunks.router, prefix="/api")
+app.include_router(video.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 
 _frontend = Path(__file__).parent.parent.parent / "frontend"

@@ -18,8 +18,8 @@ def probe_duration_ms(file_path: str) -> int:
     return 0
 
 
-def build_filelist(paths: list[str], dest: Path) -> Path:
-    filelist = dest / "filelist.txt"
+def build_filelist(paths: list, dest: Path, name: str = "filelist.txt") -> Path:
+    filelist = dest / name
     with filelist.open("w") as f:
         for p in paths:
             escaped = p.replace("'", "'\\''")
@@ -27,7 +27,7 @@ def build_filelist(paths: list[str], dest: Path) -> Path:
     return filelist
 
 
-def concat_cmd(filelist: Path, output: Path) -> list[str]:
+def concat_cmd(filelist: Path, output: Path) -> list:
     return [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
@@ -39,20 +39,5 @@ def concat_cmd(filelist: Path, output: Path) -> list[str]:
     ]
 
 
-def timelapse_cmd(filelist: Path, output: Path, speed: float) -> list[str]:
-    setpts = f"{1.0 / speed:.6f}*PTS"
-    return [
-        "ffmpeg", "-y",
-        "-f", "concat", "-safe", "0",
-        "-i", str(filelist),
-        "-vf", f"setpts={setpts}",
-        "-r", "30",
-        "-an",
-        "-progress", "pipe:1",
-        "-nostats",
-        str(output),
-    ]
-
-
-def compute_speed(total_source_ms: int, target_output_ms: int = 60_000) -> float:
-    return max(total_source_ms / target_output_ms, 1.0)
+def compute_export_size(chunks: list) -> int:
+    return sum(c["file_size_bytes"] for c in chunks)

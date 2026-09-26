@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -23,29 +23,29 @@ class VideoChunkOut(BaseModel):
     availability: str
 
 
-class JobStatusOut(BaseModel):
-    status: str
-    type: Optional[str] = None
-    progress: float = 0.0
-    download_token: Optional[str] = None
-    error: Optional[str] = None
-
-
 class IndexerStatusOut(BaseModel):
-    last_scan_at: Optional[int]
-    next_scan_in_seconds: Optional[int]
+    last_scan_at: Optional[int] = None
+    next_scan_in_seconds: Optional[int] = None
     total_monitors: int
     total_chunks: int
     unavailable_chunks: int
 
 
-class ExportRequest(BaseModel):
+class CameraExportStatus(BaseModel):
     monitor_id: int
-    from_ts: int
-    to_ts: int
+    display_name: str
+    download_token: Optional[str] = None
 
 
-class TimelapseRequest(BaseModel):
-    monitor_id: int
+class JobStatusOut(BaseModel):
+    status: str
+    type: Optional[str] = None
+    progress: float = 0.0
+    cameras: List[CameraExportStatus] = []
+    error: Optional[str] = None
+
+
+class ExportJobRequest(BaseModel):
+    monitor_ids: List[int]
     from_ts: int
     to_ts: int

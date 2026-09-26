@@ -692,11 +692,14 @@ function startSyncLoop(gridPlayer, scrubber) {
     // Advance playhead
     scrubber.setPlayhead(virtualNow);
 
-    // Sync followers
+    // Sync followers — skip cells that are buffering or mid-seek to avoid
+    // interrupting their buffer fill (which would keep them stuck on the spinner).
     for (const cell of gridPlayer.activeCells) {
       if (cell === master) continue;
-      if (Math.abs(cell.videoEl.currentTime - masterVid.currentTime) > SYNC_TOLERANCE) {
-        cell.videoEl.currentTime = masterVid.currentTime;
+      const vid = cell.videoEl;
+      if (vid.readyState < 3 || vid.seeking) continue;
+      if (Math.abs(vid.currentTime - masterVid.currentTime) > SYNC_TOLERANCE) {
+        vid.currentTime = masterVid.currentTime;
       }
     }
 

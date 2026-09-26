@@ -137,16 +137,26 @@ class CellPlayer {
       // stale callback doesn't fire on this new src and corrupt currentTime.
       if (this._seekAc) this._seekAc.abort();
       this._seekAc = new AbortController();
+      // Explicit reset: puts the element in a known-clean state before the new
+      // src.  Without this, rapid src changes (multiple clicks) can leave the
+      // media state machine in an indeterminate loading state on some browsers.
+      this._videoEl.pause();
+      this._videoEl.src = '';
+      this._videoEl.load();
       this._videoEl.src = `/api/video/${chunk.id}`;
       this._videoEl.addEventListener('loadedmetadata', () => {
         this._videoEl.currentTime = offsetSecs;
         if (wasPlaying) this._videoEl.play().catch(() => {});
       }, { once: true, signal: this._seekAc.signal });
-      // Preload the next chunk while this one loads/plays so chunk transitions
-      // are served from the browser cache instead of hitting the network cold.
+      // Redirect the preload element to the NEXT chunk — unless it is already
+      // loading the seek target (prefetchForMs ran ahead of this call), in which
+      // case both elements race on the same URL and _hideOverlay will redirect
+      // to the next chunk once playback starts.
       const chunkIdx = this._chunks.indexOf(chunk);
       if (chunkIdx >= 0 && chunkIdx < this._chunks.length - 1) {
-        this._preloadChunk(this._chunks[chunkIdx + 1].id);
+        if (this._preloadChunkId !== chunk.id) {
+          this._preloadChunk(this._chunks[chunkIdx + 1].id);
+        }
       }
     }
   }
@@ -445,7 +455,8 @@ class Scrubber {
     this._el.addEventListener('mousemove', e => this._showTooltip(e));
     this._el.addEventListener('mouseleave', () => { this._tooltip.style.display = 'none'; });
 
-    // Click anywhere on bar → move playhead + seek
+    // Click anywhere on bar → move playhead + seek immediately (no debounce —
+    // a click is a deliberate action, not a continuous drag event).
     this._el.addEventListener('click', e => {
       if (!this._periodFromMs || this._panned) { this._panned = false; return; }
       const rect = this._el.getBoundingClientRect();
@@ -454,7 +465,7 @@ class Scrubber {
       const ms = this._periodFromMs + full * (this._periodToMs - this._periodFromMs);
       this._playPct = full;
       this._updateDOM();
-      if (this.onSeek) this.onSeek(ms);
+      if (this.onSeek) this.onSeek(ms, true); // true = immediate, no debounce
     });
   }
 
@@ -538,7 +549,7 @@ class Scrubber {
       this._playPct = full;
       this._updateDOM();
       const ms = this._periodFromMs + full * periodMs;
-      if (this.onSeek) this.onSeek(ms);
+      if (this.onSeek) this.onSeek(ms, false); // false = debounced (continuous drag)
       return;
     }
 
@@ -1058,22 +1069,17 @@ scrubber.onChange = (startPct, endPct, seekMs, handle) => {
   if (!_isPlaying && handle !== 'end') gridPlayer.seekAll(seekMs);
 };
 
-// Playhead drag/click → seek all cells (works during playback too).
-// The scrubber already updates the visual playhead position in _onMove before
-// calling onSeek, so no DOM update is needed here.
-//
-// Two-stage strategy:
-//   1. IMMEDIATELY: prefetch the target chunk so the browser starts downloading
-//      it (and caching it) during the debounce window.
-//   2. After 80 ms of no movement: actually seek — by now the target chunk has
-//      had a head start and Cache-Control: immutable means re-seeks are instant.
-scrubber.onSeek = ms => {
+// Playhead interaction → seek all cells.
+// `immediate` = true  for clicks (discrete actions — respond right away).
+// `immediate` = false for drag  (continuous — debounce 80 ms to avoid flooding).
+// Either way, prefetchForMs fires instantly so the target chunk starts loading
+// before seekAll is called.
+scrubber.onSeek = (ms, immediate = false) => {
   stopSyncLoop();
   gridPlayer.prefetchForMs(ms); // warm up target chunk right away
   clearTimeout(_seekDebounceTimer);
   clearTimeout(_seekRestartTimer);
-  _seekDebounceTimer = setTimeout(() => {
-    _seekDebounceTimer = null;
+  const doSeek = () => {
     gridPlayer.seekAll(ms, _isPlaying);
     if (_isPlaying) {
       _seekRestartTimer = setTimeout(() => {
@@ -1081,7 +1087,12 @@ scrubber.onSeek = ms => {
         startSyncLoop(gridPlayer, scrubber);
       }, 150);
     }
-  }, 80);
+  };
+  if (immediate) {
+    doSeek();
+  } else {
+    _seekDebounceTimer = setTimeout(() => { _seekDebounceTimer = null; doSeek(); }, 80);
+  }
 };
 
 // ESC restores any maximized cell

@@ -384,6 +384,28 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   background: #000;
 }
 
+/* Audio toggle button — visible only on maximized cells */
+.audio-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 101;
+  background: rgba(0, 0, 0, .65);
+  border: 1px solid rgba(255, 255, 255, .25);
+  color: #fff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background .15s;
+}
+.audio-btn:hover { background: rgba(0, 0, 0, .9); }
+
 /* locked state during export */
 body.export-locked #camera-list input[type="checkbox"],
 body.export-locked #btn-confirm-period,
@@ -391,4 +413,35 @@ body.export-locked .handle,
 body.export-locked #scrubber {
   pointer-events: none;
   opacity: .5;
+}
+
+/* ── Coverage lanes ──────────────────────────────────────────────────────── */
+
+#coverage-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.coverage-lane {
+  position: relative;
+  height: 6px;
+  background: #1a1a1a;
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: default;
+}
+
+.coverage-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+
+.cam-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }

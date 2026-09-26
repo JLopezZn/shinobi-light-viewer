@@ -8,8 +8,13 @@ class CellPlayer {
     this._activeChunk = null;
     this._hasFootage = true;
     this._spinnerTimer = null;
+    // AbortController for persistent video event listeners — aborted in destroy()
+    this._ac = new AbortController();
+    // AbortController for the current pending loadedmetadata listener — replaced
+    // on every chunk change so stale callbacks never fire on the wrong chunk.
+    this._seekAc = null;
 
-    // Build DOM: name label, video, overlay
+    // Build DOM: name label, video, overlay, audio button
     containerEl.innerHTML = '';
     containerEl.classList.add('cell');
 
@@ -34,13 +39,26 @@ class CellPlayer {
     this._overlayEl.appendChild(this._msgEl);
     containerEl.appendChild(this._overlayEl);
 
+    this._audioBtn = document.createElement('button');
+    this._audioBtn.className = 'audio-btn';
+    this._audioBtn.style.display = 'none';
+    this._audioBtn.title = 'Activar / desactivar audio';
+    this._audioBtn.textContent = '🔇';
+    containerEl.appendChild(this._audioBtn);
+
+    const { signal } = this._ac;
     // canplay/playing hide the spinner shown by seekTo()/loadChunks().
     // waiting/stalled are NOT wired to _showSpinner because they fire for brief
     // buffer stalls during playback: the video would keep playing visually but
     // the semi-transparent overlay would stay stuck on top of it.
-    this._videoEl.addEventListener('canplay', () => this._hideOverlay());
-    this._videoEl.addEventListener('playing', () => this._hideOverlay());
-    this._videoEl.addEventListener('ended', () => this._onEnded());
+    this._videoEl.addEventListener('canplay', () => this._hideOverlay(), { signal });
+    this._videoEl.addEventListener('playing', () => this._hideOverlay(), { signal });
+    this._videoEl.addEventListener('ended',   () => this._onEnded(),     { signal });
+    this._audioBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      this._videoEl.muted = !this._videoEl.muted;
+      this._audioBtn.textContent = this._videoEl.muted ? '🔇' : '🔊';
+    }, { signal });
 
     // Show idle state until a period is confirmed and chunks are loaded
     this._spinnerEl.style.display = 'none';
@@ -82,11 +100,15 @@ class CellPlayer {
       const wasPlaying = !this._videoEl.paused;
       this._activeChunk = chunk;
       this._showSpinner();
+      // Abort any pending loadedmetadata from a previous chunk change so the
+      // stale callback doesn't fire on this new src and corrupt currentTime.
+      if (this._seekAc) this._seekAc.abort();
+      this._seekAc = new AbortController();
       this._videoEl.src = `/api/video/${chunk.id}`;
       this._videoEl.addEventListener('loadedmetadata', () => {
         this._videoEl.currentTime = offsetSecs;
         if (wasPlaying) this._videoEl.play().catch(() => {});
-      }, { once: true });
+      }, { once: true, signal: this._seekAc.signal });
     }
   }
 
@@ -101,6 +123,7 @@ class CellPlayer {
 
   get videoEl() { return this._videoEl; }
   get hasFootage() { return this._hasFootage; }
+  get chunks() { return this._chunks; }
   get activeChunk() { return this._activeChunk; }
 
   // Returns { fromMs, toMs } spanning all chunks, or null if no footage
@@ -148,12 +171,31 @@ class CellPlayer {
       const next = this._chunks[idx + 1];
       this._activeChunk = next;
       this._showSpinner();
+      if (this._seekAc) this._seekAc.abort();
+      this._seekAc = new AbortController();
       this._videoEl.src = `/api/video/${next.id}`;
       this._videoEl.addEventListener('loadedmetadata', () => {
         this._videoEl.currentTime = 0;
         this._videoEl.play().catch(() => {});
-      }, { once: true });
+      }, { once: true, signal: this._seekAc.signal });
     }
+  }
+
+  showAudioControl(visible) {
+    this._audioBtn.style.display = visible ? 'flex' : 'none';
+    if (!visible) {
+      this._videoEl.muted = true;
+      this._audioBtn.textContent = '🔇';
+    }
+  }
+
+  destroy() {
+    if (this._spinnerTimer) clearTimeout(this._spinnerTimer);
+    if (this._seekAc) this._seekAc.abort();
+    this._ac.abort(); // removes all persistent event listeners
+    this._videoEl.pause();
+    this._videoEl.src = '';
+    this._videoEl.load(); // release media resource
   }
 }
 
@@ -170,10 +212,13 @@ class GridPlayer {
     if (this._cells.size >= 9) return;
 
     const el = document.createElement('div');
-    el.addEventListener('dblclick', () => el.classList.toggle('maximized'));
     this._containerEl.appendChild(el);
     const cell = new CellPlayer(monitorId, displayName, el);
     this._cells.set(monitorId, { cell, el });
+    el.addEventListener('dblclick', () => {
+      const isMax = el.classList.toggle('maximized');
+      cell.showAudioControl(isMax);
+    });
     this._recalcLayout();
     this._updateToggles();
   }
@@ -181,7 +226,8 @@ class GridPlayer {
   deactivate(monitorId) {
     const entry = this._cells.get(monitorId);
     if (!entry) return;
-    entry.cell.pause();
+    entry.cell.destroy(); // releases media, timers, and all event listeners
+    entry.el.classList.remove('maximized');
     this._containerEl.removeChild(entry.el);
     this._cells.delete(monitorId);
     this._recalcLayout();
@@ -290,6 +336,9 @@ class Scrubber {
     this._miniE     = document.getElementById('minimap-end');
     this._zoomLbl   = document.getElementById('scrubber-zoom-label');
     this._hPlay     = document.getElementById('h-play');
+    this._coverageEl  = document.getElementById('coverage-lanes');
+    this._coverage    = [];
+    this._covViewKey  = null; // tracks last rendered view to avoid rebuilding every frame
 
     // Handle positions and view window — all in [0,1] relative to full period
     this._startPct  = 0;
@@ -438,6 +487,40 @@ class Scrubber {
     this._tooltip.style.top  = `${e.clientY - 34}px`;
   }
 
+  setCoverageData(cameras) {
+    this._coverage = cameras;
+    this._covViewKey = null; // force re-render
+    this._renderCoverage();
+  }
+
+  _renderCoverage() {
+    if (!this._coverageEl) return;
+    this._coverageEl.innerHTML = '';
+    if (!this._periodFromMs || !this._coverage.length) return;
+    const span = this._periodToMs - this._periodFromMs;
+    for (const cam of this._coverage) {
+      const lane = document.createElement('div');
+      lane.className = 'coverage-lane';
+      lane.title = cam.name;
+      for (const chunk of cam.chunks) {
+        const sp = (chunk.start_ts - this._periodFromMs) / span;
+        const ep = (chunk.end_ts   - this._periodFromMs) / span;
+        const sv = this._p2v(sp);
+        const ev = this._p2v(ep);
+        if (ev <= 0 || sv >= 1) continue;
+        const left  = Math.max(0, sv) * 100;
+        const width = (Math.min(1, ev) - Math.max(0, sv)) * 100;
+        if (width < 0.01) continue;
+        const seg = document.createElement('div');
+        seg.className = 'coverage-segment';
+        seg.style.cssText = `left:${left}%;width:${width}%;background:${cam.color}`;
+        lane.appendChild(seg);
+      }
+      this._coverageEl.appendChild(lane);
+    }
+    this._covViewKey = `${this._viewStart}:${this._viewEnd}`;
+  }
+
   _updateDOM() {
     const sv = this._p2v(this._startPct);
     const ev = this._p2v(this._endPct);
@@ -496,6 +579,10 @@ class Scrubber {
     if (!this._panning) {
       this._el.style.cursor = vs < 0.99 ? 'grab' : '';
     }
+
+    // Re-render coverage lanes when view window changes (zoom/pan)
+    const viewKey = `${this._viewStart}:${this._viewEnd}`;
+    if (viewKey !== this._covViewKey) this._renderCoverage();
   }
 
   setPlayhead(ms) {
@@ -565,7 +652,8 @@ class ExportManager {
     }
 
     if (res.status === 409) {
-      this._showError('Ya hay una exportación en curso.');
+      // Another job is running — attach to it so the user can monitor/cancel it.
+      await this.resume();
       return;
     }
     if (res.status === 507) {
@@ -636,6 +724,22 @@ class ExportManager {
     document.getElementById('export-progress').value = 0;
     document.getElementById('export-pct').textContent = '0%';
     this._unlock();
+  }
+
+  // Attaches the UI to an already-running server-side job.
+  // Called on page load and when the server returns 409.
+  async resume() {
+    try {
+      const res = await fetch('/api/jobs/current');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.status === 'running' || data.status === 'pending') {
+        this._clearError();
+        this._lock();
+        document.getElementById('export-progress-wrapper').classList.remove('hidden');
+        if (!this._pollTimer) this._pollTimer = setInterval(() => this._poll(), 2000);
+      }
+    } catch {}
   }
 
   _lock() {
@@ -758,6 +862,26 @@ let _periodToMs = null;
 let _playbackSpeed = 1;
 let _isPlaying = false;
 
+// Colorblind-safe palette (no red/green distinction required)
+const COVERAGE_COLORS = ['#56b4e9','#e69f00','#0072b2','#cc79a7','#f0e442','#d55e00','#009e73'];
+const _camColorMap = new Map();
+let _camColorIdx = 0;
+function camColor(monitorId) {
+  if (!_camColorMap.has(monitorId)) {
+    _camColorMap.set(monitorId, COVERAGE_COLORS[_camColorIdx++ % COVERAGE_COLORS.length]);
+  }
+  return _camColorMap.get(monitorId);
+}
+
+function updateCoverageLanes() {
+  if (!_periodFromMs) return;
+  const cameras = [];
+  for (const [monitorId, { cell }] of gridPlayer._cells) {
+    cameras.push({ name: cell.displayName, color: camColor(monitorId), chunks: cell.chunks });
+  }
+  scrubber.setCoverageData(cameras);
+}
+
 // Default date = today (local timezone, not UTC)
 const _today = new Date();
 document.getElementById('date-picker').value =
@@ -784,14 +908,19 @@ async function loadCameras() {
               .then(r => r.ok ? r.json() : [])
               .then(chunks => {
                 const entry = gridPlayer._cells.get(m.id);
-                if (entry) entry.cell.loadChunks(chunks);
+                if (entry) { entry.cell.loadChunks(chunks); updateCoverageLanes(); }
               });
           }
         } else {
           gridPlayer.deactivate(m.id);
+          updateCoverageLanes();
         }
         updateExportButton();
       });
+      const dot = document.createElement('span');
+      dot.className = 'cam-dot';
+      dot.style.background = camColor(m.id);
+      li.appendChild(dot);
       const label = document.createElement('label');
       label.textContent = m.display_name;
       label.prepend(cb);
@@ -827,6 +956,7 @@ document.getElementById('btn-confirm-period').addEventListener('click', async ()
   }
 
   gridPlayer.seekAll(scrubber.startMs);
+  updateCoverageLanes();
 
   const transportBtns = ['btn-play-pause','btn-to-start','btn-back-30','btn-fwd-30','btn-to-end'];
   transportBtns.forEach(id => { document.getElementById(id).disabled = false; });
@@ -848,6 +978,7 @@ scrubber.onSeek = ms => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.cell.maximized').forEach(el => el.classList.remove('maximized'));
+    for (const { cell } of gridPlayer._cells.values()) cell.showAudioControl(false);
   }
 });
 
@@ -951,3 +1082,4 @@ document.getElementById('btn-select-all').addEventListener('click', () => {
 loadCameras();
 pollIndexerStatus();
 setInterval(pollIndexerStatus, 30000);
+exportManager.resume(); // re-attach to any export that was running before page load

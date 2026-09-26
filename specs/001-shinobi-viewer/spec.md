@@ -73,6 +73,7 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - ¿Qué pasa si no hay ninguna cámara activa y el operador pulsa Exportar? → El botón permanece deshabilitado cuando el grid está vacío.
 - ¿Qué pasa si hay una exportación en curso y el operador cambia el rango o las cámaras? → Los controles de rango y selección de cámaras se bloquean durante la exportación.
 - ¿Qué pasa si el SSD no tiene espacio suficiente para los N archivos? → Pre-chequear espacio antes de iniciar; rechazar con mensaje claro si es insuficiente.
+- ¿Qué pasa si el operador pulsa "Limpiar DB" mientras hay una exportación en curso? → El servidor rechaza la operación con HTTP 409; la UI muestra el mensaje de error sin recargar ni interrumpir la exportación.
 
 ## Requirements *(mandatory)*
 
@@ -112,6 +113,7 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - **FR-028**: Al iniciar una exportación cuando ya hay una en curso, la UI DEBE engancharse a ese trabajo existente (mostrando progreso y botón de cancelar) en lugar de mostrar solo un error. Al recargar la página durante una exportación, la UI DEBE detectar el trabajo activo y reconectarse automáticamente.
 - **FR-029**: El scrubber DEBE soportar desplazamiento horizontal mediante: deslizamiento horizontal en trackpad (dos dedos), `Shift`+rueda vertical del mouse, y la rueda de desplazamiento lateral (tilt-wheel). La rueda vertical sin `Shift` sigue haciendo zoom. Esto complementa el arrastre con el ratón ya existente.
 - **FR-030**: Al mover el playhead (arrastre o clic) durante la reproducción activa, la reproducción DEBE continuar automáticamente desde la nueva posición. El estado de "reproduciendo" no se pierde al hacer seek, incluso si el seek cruza el límite entre dos chunks consecutivos.
+- **FR-031**: La barra lateral DEBE incluir un botón "Limpiar DB" que elimina todos los monitores y chunks indexados de la base SQLite. Al pulsarlo, el sistema muestra una confirmación antes de ejecutar la operación. Si hay una exportación en curso, el servidor rechaza la solicitud con HTTP 409 y la UI muestra el error sin recargar. Tras un borrado exitoso, la UI recarga la página; el indexer re-escaneará y repoblará la base automáticamente en su siguiente ciclo.
 
 ### Key Entities
 

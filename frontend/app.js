@@ -1193,6 +1193,22 @@ document.getElementById('btn-select-all').addEventListener('click', () => {
   });
 });
 
+// Clear DB button
+document.getElementById('btn-clear-db').addEventListener('click', async () => {
+  if (!confirm('¿Borrar todos los monitores y chunks indexados? El indexador los re-escaneará automáticamente.')) return;
+  try {
+    const res = await fetch('/api/db', { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(`Error: ${data.detail || res.statusText}`);
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert(`Error de red: ${e.message}`);
+  }
+});
+
 // Bootstrap
 loadCameras();
 pollIndexerStatus();

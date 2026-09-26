@@ -55,12 +55,13 @@ async def startup() -> None:
     )
 
 
-from .api import chunks, jobs, monitors, video  # noqa: E402
+from .api import admin, chunks, jobs, monitors, video  # noqa: E402
 
 _fastapi.include_router(monitors.router, prefix="/api")
 _fastapi.include_router(chunks.router, prefix="/api")
 _fastapi.include_router(video.router, prefix="/api")
 _fastapi.include_router(jobs.router, prefix="/api")
+_fastapi.include_router(admin.router, prefix="/api")
 
 _frontend = Path(__file__).parent.parent.parent / "frontend"
 if _frontend.exists():

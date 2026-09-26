@@ -40,7 +40,10 @@ class CellPlayer {
     this._videoEl.addEventListener('playing', () => this._hideOverlay());
     this._videoEl.addEventListener('ended', () => this._onEnded());
 
-    this._showSpinner(true);
+    // Show idle state until a period is confirmed and chunks are loaded
+    this._spinnerEl.style.display = 'none';
+    this._msgEl.textContent = 'Selecciona un período';
+    this._overlayEl.classList.remove('hidden');
   }
 
   loadChunks(chunks) {
@@ -49,6 +52,8 @@ class CellPlayer {
     this._hasFootage = chunks.length > 0;
     if (!this._hasFootage) {
       this.showNoFootage();
+    } else {
+      this._showSpinner(true);
     }
   }
 

@@ -193,12 +193,14 @@ class GridPlayer {
 
   _updateToggles() {
     const atCap = this._cells.size >= 9;
-    document.querySelectorAll('#camera-list input[type="checkbox"]').forEach(cb => {
+    const checkboxes = [...document.querySelectorAll('#camera-list input[type="checkbox"]')];
+    checkboxes.forEach(cb => {
       const mid = parseInt(cb.dataset.monitorId, 10);
-      if (!this._cells.has(mid)) {
-        cb.disabled = atCap;
-      }
+      if (!this._cells.has(mid)) cb.disabled = atCap;
     });
+    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+    const btn = document.getElementById('btn-select-all');
+    if (btn) btn.textContent = allChecked ? 'Deseleccionar todas' : 'Seleccionar todas';
   }
 
   async loadPeriod(fromMs, toMs) {
@@ -922,6 +924,18 @@ async function pollIndexerStatus() {
     }
   } catch {}
 }
+
+// Select-all toggle
+document.getElementById('btn-select-all').addEventListener('click', () => {
+  const checkboxes = [...document.querySelectorAll('#camera-list input[type="checkbox"]:not(:disabled)')];
+  const allChecked = checkboxes.every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    if (cb.checked === allChecked) {
+      cb.checked = !allChecked;
+      cb.dispatchEvent(new Event('change'));
+    }
+  });
+});
 
 // Bootstrap
 loadCameras();

@@ -106,6 +106,7 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 - **FR-022**: La barra del scrubber DEBE mostrar un tercer marcador (playhead) que indica la posición actual de reproducción; el marcador avanza automáticamente durante la reproducción y puede arrastrarse para hacer seek a cualquier instante del período, sin interrumpir la reproducción.
 - **FR-023**: La UI DEBE exponer controles de transporte: ir al inicio del rango (⏮), retroceder 30 s (⏪), play/pausa, avanzar 30 s (⏩) e ir al final del rango (⏭). Los saltos de 30 s se calculan desde la posición actual del playhead y se limitan a los extremos del rango. Todos los controles se habilitan al confirmar el período.
 - **FR-024**: Al confirmar el período, los handles del scrubber DEBEN auto-posicionarse al rango real del footage disponible (inicio del primer chunk y fin del último chunk, calculado como unión de todas las cámaras activas). Si el operador seleccionó 12:00–22:00 pero el footage solo existe de 17:00–22:00, los handles quedan en 17:00–22:00 automáticamente.
+- **FR-025**: La barra lateral DEBE incluir un botón "Seleccionar todas" que activa simultáneamente todas las cámaras disponibles. Cuando todas están activas, el botón cambia a "Deseleccionar todas" y al pulsarlo desactiva todas. Las cámaras deshabilitadas por límite de grid (máx. 9) no se consideran para este toggle.
 
 ### Key Entities
 

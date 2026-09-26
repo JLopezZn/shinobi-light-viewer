@@ -11,15 +11,20 @@ _CHUNK_SIZE = 1024 * 1024  # 1 MB read buffer
 
 
 def _stream_file(path: str, start: int, end: int):
-    with open(path, "rb") as f:
-        f.seek(start)
-        remaining = end - start + 1
-        while remaining > 0:
-            data = f.read(min(_CHUNK_SIZE, remaining))
-            if not data:
-                break
-            remaining -= len(data)
-            yield data
+    try:
+        with open(path, "rb") as f:
+            f.seek(start)
+            remaining = end - start + 1
+            while remaining > 0:
+                data = f.read(min(_CHUNK_SIZE, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
+    except OSError:
+        # File disappeared mid-stream (HDD disconnected, file rotated out, etc.).
+        # Ending the generator gives the client a truncated-but-not-crashed response.
+        return
 
 
 @router.get("/video/{chunk_id}")

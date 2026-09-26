@@ -548,7 +548,7 @@ class ExportManager {
       res = await fetch('/api/jobs/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ monitor_ids: monitorIds, from_ts: fromMs, to_ts: toMs }),
+        body: JSON.stringify({ monitor_ids: monitorIds, from_ts: Math.round(fromMs), to_ts: Math.round(toMs) }),
       });
     } catch {
       this._showError('Error de red al iniciar exportación.');
@@ -566,7 +566,12 @@ class ExportManager {
     }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      this._showError(d.detail || `Error ${res.status}`);
+      const msg = typeof d.detail === 'string'
+        ? d.detail
+        : Array.isArray(d.detail)
+          ? d.detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+          : `Error ${res.status}`;
+      this._showError(msg);
       return;
     }
 

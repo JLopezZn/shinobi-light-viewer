@@ -415,7 +415,7 @@ class Scrubber {
     }
     this._updateDOM();
     const seekMs = this._periodFromMs + this._startPct * periodMs;
-    if (this.onChange) this.onChange(this._startPct, this._endPct, seekMs);
+    if (this.onChange) this.onChange(this._startPct, this._endPct, seekMs, this._dragging);
   }
 
   _showTooltip(e) {
@@ -822,8 +822,8 @@ document.getElementById('btn-confirm-period').addEventListener('click', async ()
 });
 
 // Scrubber change callback — don't seek during playback to avoid spinner flicker
-scrubber.onChange = (startPct, endPct, seekMs) => {
-  if (!_isPlaying) gridPlayer.seekAll(seekMs);
+scrubber.onChange = (startPct, endPct, seekMs, handle) => {
+  if (!_isPlaying && handle !== 'end') gridPlayer.seekAll(seekMs);
 };
 
 // Playhead drag/click → seek all cells (works during playback too)

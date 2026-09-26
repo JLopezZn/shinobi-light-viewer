@@ -266,7 +266,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   width: 3px;
   height: 30px;
   top: -5px;
-  background: #fff;
+  background: #ffd600;
   border-radius: 2px;
   z-index: 3;
   display: none;
@@ -279,10 +279,10 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   transform: translateX(-50%);
   width: 9px;
   height: 9px;
-  background: #fff;
+  background: #ffd600;
   border-radius: 50%;
 }
-.handle-play:hover { background: #e0e0e0; }
+.handle-play:hover { background: #ffea00; }
 
 /* Mini-map: full period overview showing current zoom window */
 #scrubber-minimap {

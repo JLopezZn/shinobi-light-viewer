@@ -72,11 +72,13 @@ class CellPlayer {
     if (this._activeChunk && this._activeChunk.id === chunk.id) {
       this._videoEl.currentTime = offsetSecs;
     } else {
+      const wasPlaying = !this._videoEl.paused;
       this._activeChunk = chunk;
       this._showSpinner();
       this._videoEl.src = `/api/video/${chunk.id}`;
       this._videoEl.addEventListener('loadedmetadata', () => {
         this._videoEl.currentTime = offsetSecs;
+        if (wasPlaying) this._videoEl.play().catch(() => {});
       }, { once: true });
     }
   }
@@ -455,9 +457,9 @@ class Scrubber {
     if (this._hPlay) {
       if (this._playPct !== null) {
         const pv = this._p2v(this._playPct);
-        this._hPlay.style.display  = '';
-        this._hPlay.style.left     = `${Math.max(0, Math.min(1, pv)) * 100}%`;
-        this._hPlay.style.visibility = pv >= 0 && pv <= 1 ? '' : 'hidden';
+        this._hPlay.style.display    = 'block';
+        this._hPlay.style.left       = `${Math.max(0, Math.min(1, pv)) * 100}%`;
+        this._hPlay.style.visibility = pv >= 0 && pv <= 1 ? 'visible' : 'hidden';
       } else {
         this._hPlay.style.display = 'none';
       }
@@ -495,6 +497,11 @@ class Scrubber {
   get endMs() {
     if (!this._periodToMs) return 0;
     return this._periodFromMs + this._endPct * (this._periodToMs - this._periodFromMs);
+  }
+
+  get playheadMs() {
+    if (!this._periodFromMs || this._playPct === null) return null;
+    return this._periodFromMs + this._playPct * (this._periodToMs - this._periodFromMs);
   }
 
   getRangeMs() { return { startMs: this.startMs, endMs: this.endMs }; }
@@ -779,9 +786,10 @@ scrubber.onChange = (startPct, endPct, seekMs) => {
   if (!_isPlaying) gridPlayer.seekAll(seekMs);
 };
 
-// Playhead drag → seek all cells (works during playback too)
+// Playhead drag/click → seek all cells (works during playback too)
 scrubber.onSeek = ms => {
   gridPlayer.seekAll(ms);
+  if (_isPlaying) setTimeout(() => startSyncLoop(gridPlayer, scrubber), 150);
 };
 
 // ESC restores any maximized cell
@@ -796,8 +804,9 @@ document.getElementById('btn-play-pause').addEventListener('click', () => {
   if (!_periodFromMs) return;
   _isPlaying = !_isPlaying;
   if (_isPlaying) {
-    // Start from scrubber start position
-    gridPlayer.seekAll(scrubber.startMs);
+    // Resume from playhead position if set, otherwise from range start
+    const resumeMs = scrubber.playheadMs ?? scrubber.startMs;
+    gridPlayer.seekAll(resumeMs);
     setTimeout(() => {
       gridPlayer.setPlaybackRate(_playbackSpeed);
       gridPlayer.playAll();

@@ -711,7 +711,7 @@ class ExportManager {
       const a = document.createElement('a');
       a.href = `/api/downloads/${cam.download_token}`;
       a.download = '';
-      a.textContent = `⬇ ${cam.display_name}`;
+      a.textContent = `⬇ ${_camLabelMap.get(cam.monitor_id) ?? cam.display_name}`;
       container.appendChild(a);
     }
   }
@@ -873,6 +873,12 @@ function camColor(monitorId) {
   return _camColorMap.get(monitorId);
 }
 
+// Sequential UI labels: "Cam 1", "Cam 2", … — assigned in API order, never changes.
+const _camLabelMap = new Map(); // monitorId → "Cam N"
+function camLabel(monitorId) {
+  return _camLabelMap.get(monitorId) ?? 'Cam ?';
+}
+
 function updateCoverageLanes() {
   if (!_periodFromMs) return;
   const cameras = [];
@@ -894,15 +900,18 @@ async function loadCameras() {
     const monitors = await res.json();
     const list = document.getElementById('camera-list');
     list.innerHTML = '';
+    monitors.forEach((m, idx) => {
+      _camLabelMap.set(m.id, `Cam ${idx + 1}`);
+    });
     for (const m of monitors) {
+      const uiLabel = camLabel(m.id);
       const li = document.createElement('li');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.dataset.monitorId = m.id;
-      cb.dataset.displayName = m.display_name;
       cb.addEventListener('change', () => {
         if (cb.checked) {
-          gridPlayer.activate(m.id, m.display_name);
+          gridPlayer.activate(m.id, uiLabel);
           if (_periodFromMs) {
             fetch(`/api/monitors/${m.id}/chunks?from_ts=${_periodFromMs}&to_ts=${_periodToMs}`)
               .then(r => r.ok ? r.json() : [])
@@ -922,7 +931,8 @@ async function loadCameras() {
       dot.style.background = camColor(m.id);
       li.appendChild(dot);
       const label = document.createElement('label');
-      label.textContent = m.display_name;
+      label.title = m.display_name; // full name as tooltip for reference
+      label.textContent = uiLabel;
       label.prepend(cb);
       li.appendChild(label);
       list.appendChild(li);

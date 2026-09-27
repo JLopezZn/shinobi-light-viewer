@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,38 +8,94 @@
 </head>
 <body>
   <div id="app">
-    <aside id="sidebar">
-      <h2>Cameras</h2>
-      <ul id="camera-list"></ul>
-      <div id="indexer-status"></div>
-    </aside>
 
-    <main id="main">
-      <div id="controls">
+    <aside id="sidebar">
+      <h2>Cámaras</h2>
+      <button id="btn-select-all" style="width:100%;margin-bottom:6px">Seleccionar todas</button>
+      <ul id="camera-list"></ul>
+
+      <div id="period-selector">
+        <h3>Período</h3>
         <input type="date" id="date-picker" />
-        <div id="time-range">
-          <label>From <input type="time" id="from-time" value="00:00" /></label>
-          <label>To <input type="time" id="to-time" value="23:59" /></label>
-          <button id="btn-export" disabled>Export</button>
-          <button id="btn-timelapse" disabled>Timelapse</button>
+        <div class="time-row">
+          <label>Desde <input type="time" id="from-time" value="00:00" /></label>
+          <label>Hasta <input type="time" id="to-time" value="23:59" /></label>
+        </div>
+        <button id="btn-confirm-period">Confirmar período</button>
+      </div>
+
+      <div id="speed-selector">
+        <h3>Velocidad</h3>
+        <div id="speed-btns">
+          <button class="speed-btn active" data-speed="1">1×</button>
+          <button class="speed-btn" data-speed="2">2×</button>
+          <button class="speed-btn" data-speed="4">4×</button>
+          <button class="speed-btn" data-speed="8">8×</button>
+          <button class="speed-btn" data-speed="16">16×</button>
         </div>
       </div>
 
-      <div id="timeline-container">
-        <div id="timeline-bar"></div>
-        <div id="time-labels"></div>
-      </div>
+      <div id="indexer-status"></div>
 
-      <div id="job-panel" class="hidden">
-        <span id="job-label"></span>
-        <progress id="job-progress" value="0" max="1"></progress>
-        <button id="btn-cancel">Cancel</button>
-        <a id="download-link" class="hidden" href="#">Download</a>
+      <div id="db-controls">
+        <button id="btn-clear-db">Limpiar DB</button>
       </div>
+    </aside>
 
-      <div id="error-banner" class="hidden"></div>
+    <main id="main">
+      <div id="grid-container"></div>
+
+      <div id="bottom-panel">
+        <div id="playback-row">
+          <button id="btn-to-start"   disabled title="Ir al inicio del rango">⏮</button>
+          <button id="btn-back-30"    disabled title="Retroceder 30 s">⏪ 30s</button>
+          <button id="btn-play-pause" disabled>▶ Play</button>
+          <button id="btn-fwd-30"     disabled title="Avanzar 30 s">30s ⏩</button>
+          <button id="btn-to-end"     disabled title="Ir al final del rango">⏭</button>
+        </div>
+
+        <div id="scrubber-wrapper">
+          <div id="scrubber-toprow">
+            <span id="scrubber-zoom-label"></span>
+            <span id="scrubber-hint">Rueda: zoom · Shift+rueda o deslizar horizontal: desplazar · Arrastrar barra: desplazar</span>
+          </div>
+          <div id="scrubber">
+            <div id="scrubber-left" class="scrubber-outside"></div>
+            <div id="scrubber-range"></div>
+            <div id="scrubber-right" class="scrubber-outside"></div>
+            <div id="h-start" class="handle" title="Inicio"></div>
+            <div id="h-end" class="handle" title="Fin"></div>
+            <div id="h-play" class="handle handle-play" title="Posición actual"></div>
+          </div>
+          <div id="coverage-lanes"></div>
+          <div id="scrubber-minimap">
+            <div id="minimap-view"></div>
+            <div id="minimap-start" class="minimap-marker"></div>
+            <div id="minimap-end" class="minimap-marker"></div>
+          </div>
+          <div id="scrubber-labels">
+            <span id="lbl-period-start"></span>
+            <span id="lbl-range-start"></span>
+            <span id="lbl-range-end"></span>
+            <span id="lbl-period-end"></span>
+          </div>
+        </div>
+
+        <div id="export-panel">
+          <button id="btn-export" disabled>Exportar</button>
+          <div id="export-progress-wrapper" class="hidden">
+            <progress id="export-progress" value="0" max="1"></progress>
+            <span id="export-pct">0%</span>
+            <button id="btn-cancel-export">Cancelar</button>
+          </div>
+          <div id="download-links"></div>
+          <div id="export-error" class="hidden"></div>
+        </div>
+      </div>
     </main>
+
   </div>
+  <div id="scrubber-tooltip"></div>
   <script src="app.js"></script>
 </body>
 </html>

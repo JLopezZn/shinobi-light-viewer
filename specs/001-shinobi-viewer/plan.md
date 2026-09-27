@@ -6,46 +6,48 @@
 
 ## Summary
 
-A local web application that indexes `.mp4` surveillance footage recorded by Shinobi on an external HDD, exposes a timeline-based browser UI, and allows operators to export merged clips or timelapse previews — all without ever writing to the HDD. The backend is a FastAPI server (Python 3.10+) that runs an auto-scanning indexer, stores metadata in a local SQLite database, and delegates all video processing to FFmpeg subprocesses writing exclusively to a local SSD cache.
+Reproductor web local multi-cámara que indexa footage de Shinobi desde un HDD externo, muestra hasta 9 cámaras sincronizadas en un grid con reproducción timelapse client-side (via `playbackRate`), permite delimitar un sub-rango con un scrubber dual de dos punteros, y exporta los clips seleccionados como N archivos `.mp4` lossless (uno por cámara activa). El backend es FastAPI + SQLite; el frontend es Vanilla JS/HTML5 puro.
 
 ## Technical Context
 
-**Language/Version**: Python 3.10+
+**Language/Version**: Python 3.10+ (sistema objetivo: Windows con Python en PATH)
 
-**Primary Dependencies**: FastAPI, Uvicorn, SQLite (stdlib `sqlite3`), FFmpeg (via `subprocess`), Vanilla JS / HTML5 (frontend, no build step)
+**Primary Dependencies**: FastAPI, Uvicorn, SQLite (stdlib), FFmpeg (subprocess), Vanilla JS / HTML5
 
-**Storage**: SQLite on local SSD (`shinobi_index.db`)
+**Storage**: SQLite en SSD local (`shinobi_index.db`)
 
-**Testing**: pytest, pytest-asyncio (for async FastAPI routes), httpx (for test client)
+**Testing**: pytest, pytest-asyncio, httpx
 
-**Target Platform**: Single Linux/Windows machine, LAN access via desktop browser
+**Target Platform**: Windows local, acceso LAN vía browser de escritorio
 
-**Project Type**: Web service (FastAPI backend serving both the REST API and static frontend files)
+**Project Type**: Web service (FastAPI backend + frontend estático servido por el mismo proceso)
 
 **Performance Goals**:
-- Timeline queries for 24h window < 500ms (SC-001)
-- Export of 1-hour footage available within 2 minutes (SC-003)
-- Timelapse of 1-hour window available within 60 seconds (SC-004)
+- Grid de hasta 9 cámaras carga en < 3 segundos (SC-001)
+- Seek del scrubber actualiza todas las celdas en < 500 ms (SC-002)
+- Exportación de 1 hora × 4 cámaras disponible en < 5 minutos (SC-003)
 
 **Constraints**:
-- Zero writes to external HDD — all writes go to local SSD only
-- mtime guard: skip any file modified within the last 60 seconds
-- At most one active export/timelapse job at any time (FR-013)
-- Temp files deleted within 60 seconds of download completion (SC-006)
+- Zero writes al HDD externo — todo en SSD local
+- mtime guard: omitir archivos modificados en los últimos 60 segundos
+- Máximo 1 job de exportación activo simultáneamente
+- Máximo 9 cámaras en el grid (3×3)
+- Timelapse es client-side (`playbackRate`); FFmpeg solo para exportar
 
-**Scale/Scope**: Single operator, local LAN, desktop browsers only, v1
+**Scale/Scope**: Operador único, LAN local, v1 sin auth
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-| Gate | Requirement | Status |
-|------|-------------|--------|
-| Zero HDD writes | App NEVER writes/modifies/deletes files in Shinobi footage directory (FR-011) | PASS — enforced as hard constraint; FFmpeg output paths always target SSD cache dir |
-| mtime race guard | Indexer skips files with mtime < 60 seconds (FR-002) | PASS — checked on every scan cycle before inserting/updating any record |
-| Decoupled metadata | SQLite db and all temp files reside on local SSD only (FR-003) | PASS — db path and cache dir are both SSD-side, configurable at startup |
+| Gate | Requisito | Status |
+|------|-----------|--------|
+| Zero HDD writes | App nunca escribe en el directorio de footage (FR-019) | PASS — archivos HDD son solo leídos vía endpoint de streaming |
+| mtime race guard | Indexer omite archivos con mtime < 60 s (FR-002) | PASS — verificado en cada ciclo de scan |
+| Decoupled metadata | SQLite y cache en SSD local (FR-003) | PASS — DB_PATH y CACHE_DIR en SSD |
+| Timelapse client-side | Sin generación de archivo timelapse en servidor para visualización | PASS — `playbackRate` en browser; FFmpeg solo en export |
 
-All gates pass. Proceeding to Phase 0.
+Todos los gates pasan. Procediendo a Phase 0.
 
 ## Project Structure
 
@@ -53,7 +55,7 @@ All gates pass. Proceeding to Phase 0.
 
 ```text
 specs/001-shinobi-viewer/
-├── plan.md              # This file
+├── plan.md              # Este archivo
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output
 ├── quickstart.md        # Phase 1 output
@@ -66,38 +68,32 @@ specs/001-shinobi-viewer/
 ```text
 backend/
 ├── app/
-│   ├── main.py              # FastAPI app factory, startup/shutdown hooks
-│   ├── config.py            # Settings (footage dir, db path, cache dir, scan interval)
-│   ├── database.py          # SQLite connection, schema init
-│   ├── indexer.py           # Scan loop, mtime guard, availability check
-│   ├── models.py            # Dataclasses / Pydantic models (Monitor, VideoChunk, Job)
+│   ├── main.py              # FastAPI app factory, startup/shutdown
+│   ├── config.py            # Settings (FOOTAGE_DIR, DB_PATH, CACHE_DIR, PORT, SCAN_INTERVAL)
+│   ├── database.py          # SQLite init, schema, get_conn()
+│   ├── indexer.py           # Scan loop: startup + 60 s periódico, mtime guard, availability
+│   ├── models.py            # Pydantic models: MonitorOut, VideoChunkOut, JobStatusOut, etc.
 │   ├── api/
-│   │   ├── monitors.py      # GET /api/monitors
+│   │   ├── monitors.py      # GET /api/monitors, GET /api/indexer/status
 │   │   ├── chunks.py        # GET /api/monitors/{id}/chunks
-│   │   └── jobs.py          # POST /api/jobs/export|timelapse, GET/DELETE /api/jobs/current, GET /api/downloads/{token}
+│   │   ├── video.py         # GET /api/video/{chunk_id}  ← NUEVO: Range Request streaming
+│   │   └── jobs.py          # POST /api/jobs/export, GET/DELETE /api/jobs/current, GET /api/downloads/{token}
 │   └── services/
-│       ├── ffmpeg.py        # Lossless concat, timelapse, progress reporting
-│       └── job_manager.py   # Single-job lock, cancellation, token generation, cleanup
+│       ├── ffmpeg.py        # concat_cmd, compute_export_size
+│       └── job_manager.py   # Single-job lock, tokens, disk check, cancel
 └── tests/
     ├── unit/
-    │   ├── test_indexer.py
-    │   ├── test_ffmpeg.py
-    │   └── test_job_manager.py
     ├── integration/
-    │   ├── test_monitors_api.py
-    │   ├── test_chunks_api.py
-    │   └── test_jobs_api.py
     └── contract/
-        └── test_api_contracts.py
 
 frontend/
-├── index.html
-├── app.js               # Timeline rendering, job submission, progress polling
-└── style.css
+├── index.html               # Layout: sidebar + grid + scrubber + controles
+├── app.js                   # GridPlayer, CellPlayer, Scrubber, ExportManager
+└── style.css                # Grid layout, celdas, scrubber dual handle, spinner
 ```
 
-**Structure Decision**: Web application layout (Option 2) — separate `backend/` and `frontend/` directories. The FastAPI app serves the frontend static files directly via `StaticFiles` mount, so no separate web server is needed for v1.
+**Structure Decision**: Web application con backend y frontend en el mismo proceso FastAPI. El nuevo endpoint clave es `GET /api/video/{chunk_id}` que sirve archivos del HDD con soporte Range Requests.
 
 ## Complexity Tracking
 
-> No constitution violations detected. Section not required.
+> No hay violaciones de constitución. Sección no requerida.

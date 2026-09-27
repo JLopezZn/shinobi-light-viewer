@@ -31,4 +31,4 @@
 
 ## Notes
 
-- All items pass. Specification is ready for `/speckit-clarify` or `/speckit-plan`.
+- All items pass. Spec reescrito (2026-09-25 rev2) para grid multi-cámara con scrubber dual. Referencias a `<video>` y `playbackRate` respaldadas por la constitución del proyecto (HTML5/Range Requests).

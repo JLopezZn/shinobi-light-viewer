@@ -1,5 +1,6 @@
 import subprocess
 from dataclasses import dataclass
+from typing import Optional
 
 # Maps raw Docker state strings to the three normalized values exposed by the API.
 _STATUS_MAP: dict[str, str] = {
@@ -17,7 +18,7 @@ _STATUS_MAP: dict[str, str] = {
 class ContainerStatus:
     status: str  # "running" | "stopped" | "unknown"
     container: str
-    message: str | None = None
+    message: Optional[str] = None
 
 
 def get_container_status(container: str) -> ContainerStatus:

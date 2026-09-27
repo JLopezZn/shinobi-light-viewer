@@ -44,7 +44,32 @@ for /f "usebackq tokens=* eol=#" %%L in ("%ENV_FILE%") do (
 )
 
 if not defined PORT set PORT=8080
+if not defined SHINOBI_CONTAINER set SHINOBI_CONTAINER=shinobi
 
+:: ── Wait for Shinobi container ────────────────────────────────────────────────
+echo [docker] Waiting for Shinobi container '%SHINOBI_CONTAINER%'...
+set /a MAX_WAIT=120
+set /a INTERVAL=5
+set /a elapsed=0
+set /a iterations=0
+
+:wait_loop
+docker inspect --format={{.State.Status}} %SHINOBI_CONTAINER% 2>nul | findstr /c:"running" >nul
+if %errorlevel%==0 (
+    echo [docker] Shinobi container is running.
+    goto :shinobi_ready
+)
+if !elapsed! geq %MAX_WAIT% (
+    echo [docker] Timeout: Shinobi container did not start within %MAX_WAIT%s. Aborting.
+    pause
+    exit /b 1
+)
+echo [docker] Not running yet (!elapsed!s elapsed). Retrying in %INTERVAL%s...
+timeout /t %INTERVAL% /nobreak >nul
+set /a elapsed+=INTERVAL
+goto :wait_loop
+
+:shinobi_ready
 echo [start] Shinobi Light Viewer -^> http://localhost:%PORT%
 cd /d "%BACKEND%"
 "%VENV%\Scripts\uvicorn.exe" app.main:app --host 0.0.0.0 --port %PORT%

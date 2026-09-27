@@ -40,6 +40,26 @@
       <div id="db-controls">
         <button id="btn-clear-db">Limpiar DB</button>
       </div>
+
+      <div id="gestor-section">
+        <h3>Gestor Shinobi</h3>
+        <div id="admin-token-form">
+          <input id="admin-token" type="password" placeholder="Token admin" />
+          <button id="btn-save-token" style="width:100%;margin-top:4px">Guardar token</button>
+        </div>
+        <div id="gestor-panel" style="display:none">
+          <div id="gestor-status-row">
+            <span class="gestor-label">Estado:</span>
+            <span id="docker-status" class="badge badge-unknown">—</span>
+          </div>
+          <div id="gestor-actions">
+            <button id="btn-stop">Detener</button>
+            <button id="btn-start" disabled>Iniciar</button>
+            <button id="btn-restart" disabled>Reiniciar</button>
+          </div>
+          <div id="gestor-error"></div>
+        </div>
+      </div>
     </aside>
 
     <main id="main">

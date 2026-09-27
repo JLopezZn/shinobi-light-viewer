@@ -33,6 +33,29 @@ set -a
 . "$ENV_FILE"
 set +a
 
+# ── Wait for Shinobi container ────────────────────────────────────────────────
+SHINOBI_CONTAINER="${SHINOBI_CONTAINER:-shinobi}"
+MAX_WAIT=120
+INTERVAL=5
+elapsed=0
+
+echo "[docker] Waiting for Shinobi container '${SHINOBI_CONTAINER}'..."
+while true; do
+  # || true prevents set -e from aborting when docker inspect returns non-zero
+  status=$(docker inspect --format='{{.State.Status}}' "$SHINOBI_CONTAINER" 2>/dev/null || true)
+  if [ "$status" = "running" ]; then
+    echo "[docker] Shinobi container is running."
+    break
+  fi
+  if [ "$elapsed" -ge "$MAX_WAIT" ]; then
+    echo "[docker] Timeout: Shinobi container did not start within ${MAX_WAIT}s. Aborting."
+    exit 1
+  fi
+  echo "[docker] Not running yet (${elapsed}s elapsed). Retrying in ${INTERVAL}s..."
+  sleep "$INTERVAL"
+  elapsed=$((elapsed + INTERVAL))
+done
+
 PORT="${PORT:-8080}"
 
 echo "[start] Shinobi Light Viewer → http://localhost:$PORT"

@@ -1193,11 +1193,30 @@ document.getElementById('btn-select-all').addEventListener('click', () => {
   });
 });
 
+// ── Admin token helpers ────────────────────────────────────────────────────────
+
+function getAdminToken() {
+  return sessionStorage.getItem('adminToken') || '';
+}
+
+function setAdminToken(token) {
+  sessionStorage.setItem('adminToken', token);
+}
+
+function adminHeaders() {
+  return { 'X-Admin-Token': getAdminToken() };
+}
+
 // Clear DB button
 document.getElementById('btn-clear-db').addEventListener('click', async () => {
+  const token = getAdminToken();
+  if (!token) {
+    alert('Ingresa el token de administrador en el Gestor de Shinobi antes de limpiar la DB.');
+    return;
+  }
   if (!confirm('¿Borrar todos los monitores y chunks indexados? El indexador los re-escaneará automáticamente.')) return;
   try {
-    const res = await fetch('/api/db', { method: 'DELETE' });
+    const res = await fetch('/api/db', { method: 'DELETE', headers: adminHeaders() });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       alert(`Error: ${data.detail || res.statusText}`);
@@ -1208,6 +1227,113 @@ document.getElementById('btn-clear-db').addEventListener('click', async () => {
     alert(`Error de red: ${e.message}`);
   }
 });
+
+// ── DockerManager ──────────────────────────────────────────────────────────────
+
+const DockerManager = (() => {
+  let _pollInterval = null;
+
+  const statusEl = document.getElementById('docker-status');
+  const gestorPanel = document.getElementById('gestor-panel');
+  const tokenForm = document.getElementById('admin-token-form');
+  const tokenInput = document.getElementById('admin-token');
+  const btnSave = document.getElementById('btn-save-token');
+  const btnStop = document.getElementById('btn-stop');
+  const btnStart = document.getElementById('btn-start');
+  const btnRestart = document.getElementById('btn-restart');
+  const errorEl = document.getElementById('gestor-error');
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? 'block' : 'none';
+  }
+
+  function updateBadge(status) {
+    const labels = { running: 'En ejecución', stopped: 'Detenido', unknown: 'Desconocido' };
+    statusEl.textContent = labels[status] || status;
+    statusEl.className = 'badge badge-' + (status || 'unknown');
+  }
+
+  function setButtonsDisabled(disabled) {
+    btnStop.disabled = disabled;
+    btnStart.disabled = disabled;
+    btnRestart.disabled = disabled;
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch('/api/admin/docker/status', { headers: adminHeaders() });
+      if (res.status === 401) { stopPolling(); showTokenForm(); return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      updateBadge(data.status);
+      showError('');
+    } catch (_) { /* network error during poll — ignore */ }
+  }
+
+  function startPolling() {
+    if (_pollInterval) return;
+    pollStatus();
+    _pollInterval = setInterval(pollStatus, 3000);
+  }
+
+  function stopPolling() {
+    clearInterval(_pollInterval);
+    _pollInterval = null;
+  }
+
+  function showTokenForm() {
+    tokenForm.style.display = 'block';
+    gestorPanel.style.display = 'none';
+    stopPolling();
+  }
+
+  function showPanel() {
+    tokenForm.style.display = 'none';
+    gestorPanel.style.display = 'block';
+    setButtonsDisabled(false);
+    startPolling();
+  }
+
+  async function runAction(endpoint, errorPrefix) {
+    showError('');
+    setButtonsDisabled(true);
+    try {
+      const res = await fetch(endpoint, { method: 'POST', headers: adminHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showError(data.detail || `${errorPrefix}: error desconocido`);
+      } else {
+        updateBadge(data.status);
+      }
+    } catch (e) {
+      showError(`Error de red: ${e.message}`);
+    } finally {
+      setButtonsDisabled(false);
+    }
+  }
+
+  // Initialise visibility
+  if (getAdminToken()) {
+    showPanel();
+  } else {
+    showTokenForm();
+  }
+
+  btnSave.addEventListener('click', () => {
+    const t = tokenInput.value.trim();
+    if (!t) return;
+    setAdminToken(t);
+    tokenInput.value = '';
+    showPanel();
+  });
+
+  btnStop.addEventListener('click', () => runAction('/api/admin/docker/stop', 'Error al detener'));
+  btnStart.addEventListener('click', () => runAction('/api/admin/docker/start', 'Error al iniciar'));
+  btnRestart.addEventListener('click', () => runAction('/api/admin/docker/restart', 'Error al reiniciar'));
+
+  return { startPolling, stopPolling };
+})();
 
 // Bootstrap
 loadCameras();

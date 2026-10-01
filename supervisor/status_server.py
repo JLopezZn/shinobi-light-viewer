@@ -111,7 +111,7 @@ def _state_json() -> dict:
         s = state
         events = list(crash_log)
 
-    def _dt(dt: datetime | None) -> str | None:
+    def _dt(dt):  # datetime | None -> str | None
         return dt.isoformat() if dt else None
 
     return {

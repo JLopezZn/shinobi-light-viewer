@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import threading
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
@@ -12,7 +13,7 @@ from ..services import git_manager
 router = APIRouter()
 
 _op_lock = threading.Lock()
-_pending_operation: str | None = None
+_pending_operation: Optional[str] = None
 
 
 def _get_current_branch() -> str:

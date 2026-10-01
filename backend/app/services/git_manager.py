@@ -1,6 +1,7 @@
 import re
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 
 def _repo_root() -> Path:
@@ -56,7 +57,7 @@ def list_branches() -> dict:
 
     local_names: set[str] = set()
     remote_names: set[str] = set()
-    current: str | None = None
+    current: Optional[str] = None
 
     for line in result.stdout.splitlines():
         stripped = line.strip()

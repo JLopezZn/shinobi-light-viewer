@@ -31,7 +31,10 @@ def git_pull() -> dict:
     Returns dict with keys: status (success|up_to_date|failed), summary (str).
     On conflict/error, hard-resets to HEAD before returning.
     """
-    result = _run(["git", "pull"])
+    branch_result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
+    pull_args = ["git", "pull", "origin", current_branch] if current_branch else ["git", "pull"]
+    result = _run(pull_args)
     if result.returncode != 0:
         _run(["git", "reset", "--hard", "HEAD"])
         return {"status": "failed", "summary": (result.stderr or result.stdout).strip()}

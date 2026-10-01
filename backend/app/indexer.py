@@ -121,9 +121,10 @@ def scan_once(footage_dir: Path) -> None:
 
 
 async def run_indexer_loop(footage_dir: Path, interval_seconds: int) -> None:
+    loop = asyncio.get_event_loop()
     while True:
         try:
-            scan_once(footage_dir)
+            await loop.run_in_executor(None, scan_once, footage_dir)
         except Exception as exc:
             print(f"[indexer] scan error: {exc}")
 

@@ -975,10 +975,11 @@ function updateCoverageLanes() {
   scrubber.setCoverageData(cameras);
 }
 
-// Default date = today (local timezone, not UTC)
+// Default date = today — flatpickr handles cross-browser (Safari lacks native date picker)
 const _today = new Date();
-document.getElementById('date-picker').value =
-  `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}-${String(_today.getDate()).padStart(2, '0')}`;
+flatpickr('#date-picker', { dateFormat: 'Y-m-d', defaultDate: _today });
+flatpickr('#from-time', { enableTime: true, noCalendar: true, time_24hr: true, dateFormat: 'H:i' });
+flatpickr('#to-time',   { enableTime: true, noCalendar: true, time_24hr: true, dateFormat: 'H:i' });
 
 // Load camera list
 async function loadCameras() {
@@ -1193,11 +1194,30 @@ document.getElementById('btn-select-all').addEventListener('click', () => {
   });
 });
 
+// ── Admin token helpers ────────────────────────────────────────────────────────
+
+function getAdminToken() {
+  return sessionStorage.getItem('adminToken') || '';
+}
+
+function setAdminToken(token) {
+  sessionStorage.setItem('adminToken', token);
+}
+
+function adminHeaders() {
+  return { 'X-Admin-Token': getAdminToken() };
+}
+
 // Clear DB button
 document.getElementById('btn-clear-db').addEventListener('click', async () => {
+  const token = getAdminToken();
+  if (!token) {
+    alert('Ingresa el token de administrador en el Gestor de Shinobi antes de limpiar la DB.');
+    return;
+  }
   if (!confirm('¿Borrar todos los monitores y chunks indexados? El indexador los re-escaneará automáticamente.')) return;
   try {
-    const res = await fetch('/api/db', { method: 'DELETE' });
+    const res = await fetch('/api/db', { method: 'DELETE', headers: adminHeaders() });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       alert(`Error: ${data.detail || res.statusText}`);
@@ -1208,6 +1228,270 @@ document.getElementById('btn-clear-db').addEventListener('click', async () => {
     alert(`Error de red: ${e.message}`);
   }
 });
+
+// ── DockerManager ──────────────────────────────────────────────────────────────
+
+const DockerManager = (() => {
+  let _pollInterval = null;
+
+  const statusEl = document.getElementById('docker-status');
+  const gestorPanel = document.getElementById('gestor-panel');
+  const tokenForm = document.getElementById('admin-token-form');
+  const tokenInput = document.getElementById('admin-token');
+  const btnSave = document.getElementById('btn-save-token');
+  const btnStop = document.getElementById('btn-stop');
+  const btnStart = document.getElementById('btn-start');
+  const btnRestart = document.getElementById('btn-restart');
+  const errorEl = document.getElementById('gestor-error');
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? 'block' : 'none';
+  }
+
+  function updateBadge(status) {
+    const labels = { running: 'En ejecución', stopped: 'Detenido', unknown: 'Desconocido' };
+    statusEl.textContent = labels[status] || status;
+    statusEl.className = 'badge badge-' + (status || 'unknown');
+  }
+
+  function setButtonsDisabled(disabled) {
+    btnStop.disabled = disabled;
+    btnStart.disabled = disabled;
+    btnRestart.disabled = disabled;
+  }
+
+  async function pollStatus() {
+    try {
+      const res = await fetch('/api/admin/docker/status', { headers: adminHeaders() });
+      if (res.status === 401) { stopPolling(); showTokenForm(); return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      updateBadge(data.status);
+      showError('');
+    } catch (_) { /* network error during poll — ignore */ }
+  }
+
+  function startPolling() {
+    if (_pollInterval) return;
+    pollStatus();
+    _pollInterval = setInterval(pollStatus, 3000);
+  }
+
+  function stopPolling() {
+    clearInterval(_pollInterval);
+    _pollInterval = null;
+  }
+
+  function showTokenForm() {
+    tokenForm.style.display = 'block';
+    gestorPanel.style.display = 'none';
+    stopPolling();
+  }
+
+  function showPanel() {
+    tokenForm.style.display = 'none';
+    gestorPanel.style.display = 'block';
+    setButtonsDisabled(false);
+    startPolling();
+    // Load branches when panel becomes visible (BranchSwitcher defined below)
+    if (typeof BranchSwitcher !== 'undefined') BranchSwitcher.reload();
+  }
+
+  async function runAction(endpoint, errorPrefix) {
+    showError('');
+    setButtonsDisabled(true);
+    try {
+      const res = await fetch(endpoint, { method: 'POST', headers: adminHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showError(data.detail || `${errorPrefix}: error desconocido`);
+      } else {
+        updateBadge(data.status);
+      }
+    } catch (e) {
+      showError(`Error de red: ${e.message}`);
+    } finally {
+      setButtonsDisabled(false);
+    }
+  }
+
+  // Initialise visibility
+  if (getAdminToken()) {
+    showPanel();
+  } else {
+    showTokenForm();
+  }
+
+  btnSave.addEventListener('click', () => {
+    const t = tokenInput.value.trim();
+    if (!t) return;
+    setAdminToken(t);
+    tokenInput.value = '';
+    showPanel();
+  });
+
+  btnStop.addEventListener('click', () => runAction('/api/admin/docker/stop', 'Error al detener'));
+  btnStart.addEventListener('click', () => runAction('/api/admin/docker/start', 'Error al iniciar'));
+  btnRestart.addEventListener('click', () => runAction('/api/admin/docker/restart', 'Error al reiniciar'));
+
+  return { startPolling, stopPolling, showPanel };
+})();
+
+// ── App Update ─────────────────────────────────────────────────────────────────
+
+const AppUpdate = (() => {
+  const btn = document.getElementById('btn-update-app');
+  const resultEl = document.getElementById('update-result');
+
+  function setResult(msg, color) {
+    resultEl.textContent = msg;
+    resultEl.style.color = color || '';
+    resultEl.style.display = 'block';
+  }
+
+  async function pollUntilOnline() {
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res = await fetch('/api/admin/git/status', { headers: adminHeaders() });
+        if (res.ok) return true;
+      } catch (_) { /* still restarting */ }
+    }
+    return false;
+  }
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    setResult('Buscando actualizaciones...', '#aaa');
+    try {
+      const res = await fetch('/api/admin/git/update', { method: 'POST', headers: adminHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResult(data.detail || 'Error desconocido', '#ef4444');
+        btn.disabled = false;
+        return;
+      }
+      if (data.status === 'up_to_date') {
+        setResult('Ya está actualizado.', '#22c55e');
+        btn.disabled = false;
+      } else if (data.status === 'failed') {
+        setResult(`Error: ${data.summary}`, '#ef4444');
+        btn.disabled = false;
+      } else {
+        setResult('Actualización aplicada. Reiniciando...', '#f0a500');
+        const back = await pollUntilOnline();
+        setResult(back ? 'App reiniciada.' : 'Reinicio tardando más de lo esperado.', back ? '#22c55e' : '#f0a500');
+        btn.disabled = false;
+        BranchSwitcher.reload();
+      }
+    } catch (e) {
+      setResult(`Error de red: ${e.message}`, '#ef4444');
+      btn.disabled = false;
+    }
+  });
+})();
+
+// ── Branch Switcher ────────────────────────────────────────────────────────────
+
+const BranchSwitcher = (() => {
+  const select = document.getElementById('branch-select');
+  const loadingEl = document.getElementById('branch-loading');
+  const btn = document.getElementById('btn-switch-branch');
+  const errorEl = document.getElementById('gestor-error');
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? 'block' : 'none';
+  }
+
+  async function loadBranches() {
+    select.disabled = true;
+    btn.disabled = true;
+    loadingEl.style.display = 'inline';
+    try {
+      const res = await fetch('/api/admin/git/branches', { headers: adminHeaders() });
+      if (!res.ok) { loadingEl.style.display = 'none'; select.disabled = false; return; }
+      const data = await res.json();
+      select.innerHTML = '';
+      for (const b of data.branches) {
+        const opt = document.createElement('option');
+        opt.value = b.name;
+        opt.textContent = b.name + (b.is_current ? ' (actual)' : '') + (!b.is_local ? ' [remota]' : '');
+        opt.disabled = b.is_current;
+        opt.selected = b.is_current;
+        select.appendChild(opt);
+      }
+      if (data.warning) showError(`Aviso: ${data.warning}`);
+      btn.disabled = false;
+    } catch (_) {
+      /* ignore */
+    } finally {
+      loadingEl.style.display = 'none';
+      select.disabled = false;
+    }
+  }
+
+  async function pollUntilOnline() {
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res = await fetch('/api/admin/git/status', { headers: adminHeaders() });
+        if (res.ok) return true;
+      } catch (_) { /* still restarting */ }
+    }
+    return false;
+  }
+
+  btn.addEventListener('click', async () => {
+    const branch = select.value;
+    if (!branch) return;
+    showError('');
+    btn.disabled = true;
+    select.disabled = true;
+    try {
+      const res = await fetch('/api/admin/git/switch', {
+        method: 'POST',
+        headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showError(data.detail || 'Error desconocido');
+        btn.disabled = false;
+        select.disabled = false;
+        return;
+      }
+      if (data.status === 'already_current') {
+        showError('Ya estás en esta rama.');
+        btn.disabled = false;
+        select.disabled = false;
+      } else if (data.status === 'failed') {
+        showError(`Error al cambiar rama: ${data.summary}`);
+        btn.disabled = false;
+        select.disabled = false;
+      } else {
+        showError('Cambiando rama y reiniciando...');
+        const back = await pollUntilOnline();
+        if (back) { showError(''); loadBranches(); }
+        else showError('Reinicio tardando más de lo esperado.');
+        btn.disabled = false;
+        select.disabled = false;
+      }
+    } catch (e) {
+      showError(`Error de red: ${e.message}`);
+      btn.disabled = false;
+      select.disabled = false;
+    }
+  });
+
+  // Auto-load if the panel is already visible (admin token was pre-set on page load)
+  if (document.getElementById('gestor-panel').style.display !== 'none') {
+    loadBranches();
+  }
+
+  return { reload: loadBranches };
+})();
 
 // Bootstrap
 loadCameras();

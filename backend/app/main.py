@@ -49,19 +49,29 @@ _fastapi = FastAPI(title="Shinobi Light Viewer")
 
 @_fastapi.on_event("startup")
 async def startup() -> None:
+    print("[startup] Initializing database...", flush=True)
     init_db(settings.db_path)
+    print(f"[startup] Database ready at {settings.db_path}", flush=True)
+    print(f"[startup] Checking footage dir: {settings.footage_dir}", flush=True)
+    if not settings.footage_dir.exists():
+        print(f"[startup] WARNING: footage dir does not exist: {settings.footage_dir}", flush=True)
+    else:
+        print("[startup] Footage dir accessible.", flush=True)
+    print("[startup] Starting indexer loop...", flush=True)
     asyncio.create_task(
         run_indexer_loop(settings.footage_dir, settings.scan_interval_seconds)
     )
+    print("[startup] Done — application ready.", flush=True)
 
 
-from .api import admin, chunks, jobs, monitors, video  # noqa: E402
+from .api import admin, chunks, git_ops, jobs, monitors, video  # noqa: E402
 
 _fastapi.include_router(monitors.router, prefix="/api")
 _fastapi.include_router(chunks.router, prefix="/api")
 _fastapi.include_router(video.router, prefix="/api")
 _fastapi.include_router(jobs.router, prefix="/api")
 _fastapi.include_router(admin.router, prefix="/api")
+_fastapi.include_router(git_ops.router, prefix="/api/admin/git")
 
 _frontend = Path(__file__).parent.parent.parent / "frontend"
 if _frontend.exists():

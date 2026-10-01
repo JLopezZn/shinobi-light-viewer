@@ -975,10 +975,11 @@ function updateCoverageLanes() {
   scrubber.setCoverageData(cameras);
 }
 
-// Default date = today (local timezone, not UTC)
+// Default date = today — flatpickr handles cross-browser (Safari lacks native date picker)
 const _today = new Date();
-document.getElementById('date-picker').value =
-  `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}-${String(_today.getDate()).padStart(2, '0')}`;
+flatpickr('#date-picker', { dateFormat: 'Y-m-d', defaultDate: _today });
+flatpickr('#from-time', { enableTime: true, noCalendar: true, time_24hr: true, dateFormat: 'H:i' });
+flatpickr('#to-time',   { enableTime: true, noCalendar: true, time_24hr: true, dateFormat: 'H:i' });
 
 // Load camera list
 async function loadCameras() {

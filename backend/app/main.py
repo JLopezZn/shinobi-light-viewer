@@ -64,13 +64,14 @@ async def startup() -> None:
     print("[startup] Done — application ready.", flush=True)
 
 
-from .api import admin, chunks, jobs, monitors, video  # noqa: E402
+from .api import admin, chunks, git_ops, jobs, monitors, video  # noqa: E402
 
 _fastapi.include_router(monitors.router, prefix="/api")
 _fastapi.include_router(chunks.router, prefix="/api")
 _fastapi.include_router(video.router, prefix="/api")
 _fastapi.include_router(jobs.router, prefix="/api")
 _fastapi.include_router(admin.router, prefix="/api")
+_fastapi.include_router(git_ops.router, prefix="/api/admin/git")
 
 _frontend = Path(__file__).parent.parent.parent / "frontend"
 if _frontend.exists():

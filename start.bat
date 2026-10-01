@@ -43,7 +43,7 @@ for /f "usebackq tokens=* eol=#" %%L in ("%ENV_FILE%") do (
     set "%%L"
 )
 
-if not defined PORT set PORT=8080
+if not defined PORT set PORT=8090
 if not defined SHINOBI_CONTAINER set SHINOBI_CONTAINER=shinobi
 
 :: ── Wait for Shinobi container ────────────────────────────────────────────────
@@ -70,6 +70,7 @@ set /a elapsed+=INTERVAL
 goto :wait_loop
 
 :shinobi_ready
+if not defined STATUS_PORT set /a STATUS_PORT=%PORT%+1
 echo [start] Shinobi Light Viewer -^> http://localhost:%PORT%
-cd /d "%BACKEND%"
-"%VENV%\Scripts\uvicorn.exe" app.main:app --host 0.0.0.0 --port %PORT%
+echo [start] Status page           -^> http://localhost:%STATUS_PORT%
+"%VENV%\Scripts\python.exe" "%SCRIPT_DIR%supervisor\supervisor.py"

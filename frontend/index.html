@@ -57,6 +57,19 @@
             <button id="btn-start" disabled>Iniciar</button>
             <button id="btn-restart" disabled>Reiniciar</button>
           </div>
+          <div id="app-update-section" style="margin-top:10px">
+            <button id="btn-update-app" style="width:100%">Buscar actualizaciones</button>
+            <span id="update-result" style="font-size:12px;display:none;margin-top:4px;display:block"></span>
+          </div>
+          <div id="branch-section" style="margin-top:10px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <select id="branch-select" style="flex:1;font-size:12px">
+                <option value="">Cargando ramas...</option>
+              </select>
+              <span id="branch-loading" style="display:none;font-size:11px;color:#aaa">↻</span>
+            </div>
+            <button id="btn-switch-branch" disabled style="width:100%;margin-top:4px">Cambiar rama</button>
+          </div>
           <div id="gestor-error"></div>
         </div>
       </div>

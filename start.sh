@@ -56,8 +56,11 @@ while true; do
   elapsed=$((elapsed + INTERVAL))
 done
 
-PORT="${PORT:-8080}"
+PORT="${PORT:-8090}"
+STATUS_PORT="${STATUS_PORT:-$((PORT + 1))}"
 
 echo "[start] Shinobi Light Viewer → http://localhost:$PORT"
-cd "$BACKEND"
-exec "$VENV/bin/uvicorn" app.main:app --host 0.0.0.0 --port "$PORT"
+echo "[start] Status page           → http://localhost:$STATUS_PORT"
+
+export SCRIPT_DIR VENV BACKEND PORT STATUS_PORT
+exec "$VENV/bin/python3" "$SCRIPT_DIR/supervisor/supervisor.py"

@@ -33,7 +33,13 @@ def git_pull() -> dict:
     """
     branch_result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
     current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
-    pull_args = ["git", "pull", "origin", current_branch] if current_branch else ["git", "pull"]
+    # Strip remote prefix that can appear when HEAD points at a tracking ref
+    if current_branch.startswith("origin/"):
+        current_branch = current_branch[len("origin/"):]
+    if current_branch and current_branch != "HEAD":
+        pull_args = ["git", "pull", "origin", current_branch]
+    else:
+        pull_args = ["git", "pull"]
     result = _run(pull_args)
     if result.returncode != 0:
         _run(["git", "reset", "--hard", "HEAD"])
@@ -54,7 +60,7 @@ def list_branches() -> dict:
     fetch = _run(["git", "fetch", "--prune", "--quiet"])
     warning = (fetch.stderr or fetch.stdout).strip() if fetch.returncode != 0 else None
 
-    result = _run(["git", "branch", "-a"])
+    result = _run(["git", "branch", "-a", "--no-color"])
     if result.returncode != 0:
         return {"branches": [], "warning": result.stderr.strip() or "Failed to list branches"}
 
@@ -64,7 +70,7 @@ def list_branches() -> dict:
 
     for line in result.stdout.splitlines():
         stripped = line.strip()
-        if not stripped or "HEAD ->" in stripped:
+        if not stripped or "HEAD ->" in stripped or "(HEAD detached" in stripped:
             continue
         is_cur = stripped.startswith("* ")
         name_raw = stripped.lstrip("* ")

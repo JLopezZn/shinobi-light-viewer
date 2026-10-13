@@ -16,7 +16,7 @@ El operador abre el viewer, ve una lista de cámaras disponibles, activa las que
 
 **Why this priority**: Sin el grid no existe la aplicación. Todo lo demás — el scrubber, la exportación — opera sobre este grid.
 
-**Independent Test**: Apuntar el indexer a un directorio con `.mp4` de muestra de al menos 2 cámaras distintas, seleccionarlas, y verificar que el grid las muestra en celdas separadas reproduciéndose en timelapse y en sincronía.
+**Independent Test**: Apuntar el indexer a un directorio con archivos `.mp4` o `.webm` de muestra de al menos 2 cámaras distintas, seleccionarlas, y verificar que el grid las muestra en celdas separadas reproduciéndose en timelapse y en sincronía.
 
 **Acceptance Scenarios**:
 
@@ -79,13 +79,13 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 
 ### Functional Requirements
 
-- **FR-001**: El indexer DEBE escanear recursivamente el directorio de footage e indexar archivos `.mp4` usando la estructura de Shinobi (`GroupKey/MonitorID/[YYYY-MM-DD/]filename.mp4`). El segmento de fecha es opcional.
+- **FR-001**: El indexer DEBE escanear recursivamente el directorio de footage e indexar archivos `.mp4` y `.webm` usando la estructura de Shinobi (`GroupKey/MonitorID/[YYYY-MM-DD/]filename.mp4`). El segmento de fecha es opcional.
 - **FR-002**: El indexer DEBE omitir cualquier archivo cuya fecha de modificación sea de hace menos de 60 segundos.
 - **FR-003**: El indexer DEBE almacenar todos los metadatos exclusivamente en una base SQLite local en el SSD — sin escribir nunca en el HDD externo.
 - **FR-004**: El indexer DEBE ejecutar un escaneo completo al arrancar y repetirlo cada 60 segundos.
 - **FR-005**: El sistema DEBE exponer un endpoint para listar todas las cámaras/monitores disponibles.
 - **FR-006**: El sistema DEBE exponer un endpoint para consultar chunks de video por cámara y rango de tiempo.
-- **FR-006b**: El sistema DEBE servir los archivos `.mp4` del HDD de forma directa mediante HTTP con soporte de Range Requests (`Accept-Ranges: bytes`), para que el browser pueda cargar y controlar la reproducción sin procesamiento previo.
+- **FR-006b**: El sistema DEBE servir los archivos `.mp4` y `.webm` del HDD de forma directa mediante HTTP con soporte de Range Requests (`Accept-Ranges: bytes`), respondiendo con el `Content-Type` correcto según la extensión (`video/mp4` o `video/webm`), para que el browser pueda cargar y controlar la reproducción sin procesamiento previo.
 - **FR-007**: La UI DEBE mostrar una lista lateral de cámaras con un toggle (activar/desactivar) por cada una.
 - **FR-007b**: La UI DEBE proveer un selector de fecha más dos inputs de hora (inicio y fin del período) para definir el período de tiempo visible en el grid. Al confirmar el período, todas las celdas activas cargan y sincronizan su reproducción a partir del inicio del período.
 - **FR-008**: La UI DEBE construir un grid de celdas de video con una celda por cámara activa, reorganizándose dinámicamente al activar o desactivar cámaras. El grid soporta un máximo de 9 cámaras simultáneas (3×3); el toggle de una décima cámara se deshabilita mientras haya 9 activas.
@@ -118,7 +118,7 @@ Con el rango delimitado por los punteros, el operador pulsa "Exportar". El siste
 ### Key Entities
 
 - **Monitor**: Cámara de Shinobi identificada por `GroupKey` + `MonitorID`.
-- **VideoChunk**: Archivo `.mp4` grabado con start\_ts, end\_ts, duración, tamaño y ruta absoluta en el HDD.
+- **VideoChunk**: Archivo `.mp4` o `.webm` grabado con start\_ts, end\_ts, duración, tamaño y ruta absoluta en el HDD.
 - **Index**: Base SQLite en el SSD con tablas `monitors` y `video_chunks`.
 - **GridCell**: Representación en UI de una cámara activa dentro del grid; contiene el estado de reproducción (posición actual, buffering).
 - **ScrubRange**: El par (start\_ts, end\_ts) definido por los dos punteros del scrubber; determina qué se exporta.

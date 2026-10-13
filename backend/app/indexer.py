@@ -7,7 +7,7 @@ from .database import get_conn
 from .services.ffmpeg import probe_duration_ms
 
 _CHUNK_PATTERN = re.compile(
-    r"(?P<group_key>[^/]+)/(?P<monitor_id>[^/]+)/(?:\d{4}-\d{2}-\d{2}/)?(?P<filename>[^/]+\.mp4)$"
+    r"(?P<group_key>[^/]+)/(?P<monitor_id>[^/]+)/(?:\d{4}-\d{2}-\d{2}/)?(?P<filename>[^/]+\.(?:mp4|webm))$"
 )
 
 _indexer_state: dict = {
@@ -26,7 +26,8 @@ def scan_once(footage_dir: Path) -> None:
 
     scanned_paths: set[str] = set()
 
-    for mp4_file in footage_dir.rglob("*.mp4"):
+    video_files = [*footage_dir.rglob("*.mp4"), *footage_dir.rglob("*.webm")]
+    for mp4_file in video_files:
         try:
             stat = mp4_file.stat()
         except OSError:

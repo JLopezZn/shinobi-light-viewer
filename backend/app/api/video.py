@@ -71,9 +71,10 @@ async def stream_video(chunk_id: int, request: Request):
         "Cache-Control": "public, max-age=86400, immutable",
     }
 
+    media_type = "video/webm" if file_path.endswith(".webm") else "video/mp4"
     return StreamingResponse(
         _stream_file(file_path, start, end),
         status_code=status_code,
-        media_type="video/mp4",
+        media_type=media_type,
         headers=headers,
     )
